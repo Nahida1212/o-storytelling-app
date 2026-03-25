@@ -1,0 +1,30 @@
+{
+  "name": "o-storytelling-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@quasar/extras": "^1.17.0",
+    "@quasar/vite-plugin": "^1.10.0",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.6.0",
+    "@tauri-apps/plugin-opener": "^2",
+    "quasar": "^2.18.6",
+    "vue": "^3.5.13",
+    "vue-router": "^5.0.3"
+  },
+  "devDependencies": {
+    "@quasar/app-vite": "^2.5.1",
+    "@tauri-apps/cli": "^2",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3",
+    "vue-tsc": "^2.1.10"
+  }
+}

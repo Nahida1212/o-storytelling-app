@@ -1,0 +1,29 @@
+import { createApp } from "vue";
+import App from "./App.vue";
+import "quasar/dist/quasar.css";
+import "@quasar/extras/material-icons/material-icons.css";
+import router from "./routers";
+import { Quasar } from "quasar";
+
+const app = createApp(App);
+app.use(router);
+
+app.use(Quasar, {
+  plugins: {},
+  config: {
+    brand: {
+      primary: "#061931",
+      secondary: "#313454",
+      accent: "#00B0FF",
+
+      // 其他状态色可根据需要调整
+      dark: "#1d1d1d",
+      positive: "#21BA45",
+      negative: "#C10015",
+      info: "#31CCEC",
+      warning: "#F2C037",
+    },
+  },
+});
+
+app.mount("#app");
