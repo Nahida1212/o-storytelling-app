@@ -1,12 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-
+import { ref } from "vue";
 </script>
-<template>
+<template></template>
 
-    <q-page-container>
-        <div>
-            fffffffffffffffff
-        </div>
-    </q-page-container>
-</template>
+<style scoped></style>
+

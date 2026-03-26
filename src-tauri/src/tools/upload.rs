@@ -7,7 +7,7 @@ use std::{
 use tauri::{AppHandle, Error, Manager, Result};
 
 #[tauri::command]
-pub fn file_upload(app: AppHandle, file: String) -> Result<PathBuf> {
+pub fn file_upload(_: AppHandle, file: String) -> Result<PathBuf> {
     println!("file {}", file);
 
     let mut book_path = PathBuf::new();

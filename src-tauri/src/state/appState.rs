@@ -1,7 +1,5 @@
-use std::{default, sync::Mutex};
 
-use tauri::AppHandle;
-
+use std::sync::Mutex;
 use crate::{
     config::{
         self,
@@ -25,7 +23,6 @@ impl Default for AppState {
 pub fn load_state() -> Result<String, String> {
     // read from disk
 
-    let mut app_state = AppState::default();
-
-    Ok("fsfs".to_owned())
+    
+    Ok(" is ok".to_owned())
 }
