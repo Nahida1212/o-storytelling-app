@@ -3,7 +3,7 @@
   <q-page padding>
     <!-- 页面标题和操作栏 -->
     <div class="row items-center justify-between q-mb-md">
-      <div class="text-h5 text-pink-7 text-weight-bold">图书馆
+      <div class="text-h5 text-pink-7 text-weight-bold">书架
         <div class="text-subtitle1">upload your book</div>
 
       </div>
