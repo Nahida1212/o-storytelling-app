@@ -8,6 +8,18 @@
     "opener:default",
     "dialog:allow-open",
     "dialog:allow-message",
-    "dialog:allow-confirm"
+    "dialog:allow-confirm",
+    "fs:allow-copy-file",
+    "fs:allow-read-file",
+    "fs:allow-log-write",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        "$APPDATA/**",          
+        "$DOCUMENT/**",         
+        "$DESKTOP/**",
+        "$PICTURE/**"
+      ]
+    }
   ]
 }

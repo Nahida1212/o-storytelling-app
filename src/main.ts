@@ -4,12 +4,15 @@ import "quasar/dist/quasar.css";
 import "@quasar/extras/material-icons/material-icons.css";
 import router from "./routers";
 import { Quasar } from "quasar";
+import { Notify } from "quasar";
 
 const app = createApp(App);
 app.use(router);
 
 app.use(Quasar, {
-  plugins: {},
+  plugins: {
+    Notify,
+  },
   config: {
     brand: {
       primary: "#061931",
@@ -22,6 +25,9 @@ app.use(Quasar, {
       negative: "#C10015",
       info: "#31CCEC",
       warning: "#F2C037",
+    },
+    notify: {
+      /* look at QuasarConfOptions from the API card */
     },
   },
 });

@@ -1,9 +1,12 @@
-use std::fs;
+use std::{clone, fs};
 use std::{default, path::PathBuf};
 
+use serde::{Deserialize, Serialize};
 use tauri::{App, AppHandle, Manager};
+use tauri_ts_generator::TS;
 
-#[derive(Debug)]
+#[derive(Debug,Clone,Serialize,Deserialize,TS)]
+#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     pub use_custom_dir: bool,
     pub novel_path: PathBuf,
@@ -20,7 +23,7 @@ impl Default for AppConfig {
     }
 }
 
-pub fn load_config(app: &AppHandle) -> AppConfig {
+pub fn get_config(app: &AppHandle) -> AppConfig {
     let conf_dir = app.path().config_dir().expect("cant load config from dir");
 
     todo!()

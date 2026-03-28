@@ -1,0 +1,54 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36" version="29.6.6" pages="2">
+  <diagram name="第 1 页" id="TE9OpHM9irOPzZpIlXLt">
+    <mxGraphModel dx="1213" dy="730" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="QfflMmxHevinkfsIU0Aq-4" edge="1" parent="1" source="QfflMmxHevinkfsIU0Aq-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="QfflMmxHevinkfsIU0Aq-3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="用户点击上传图书" vertex="1">
+          <mxGeometry height="60" width="120" x="80" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-6" edge="1" parent="1" source="QfflMmxHevinkfsIU0Aq-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="QfflMmxHevinkfsIU0Aq-5" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-3" parent="1" style="whiteSpace=wrap;html=1;rounded=0;" value="获取被导入图书地址,将文件复制到用户自定义的地址" vertex="1">
+          <mxGeometry height="60" width="120" x="80" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-8" edge="1" parent="1" source="QfflMmxHevinkfsIU0Aq-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="QfflMmxHevinkfsIU0Aq-7" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="rust桌面后端分析图书导入数据库" vertex="1">
+          <mxGeometry height="60" width="120" x="80" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-7" parent="1" style="whiteSpace=wrap;html=1;rounded=0;" value="" vertex="1">
+          <mxGeometry height="60" width="120" x="80" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-11" edge="1" parent="1" source="QfflMmxHevinkfsIU0Aq-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="QfflMmxHevinkfsIU0Aq-10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-9" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="用户删除导入图书" vertex="1">
+          <mxGeometry height="60" width="120" x="350" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-13" edge="1" parent="1" source="QfflMmxHevinkfsIU0Aq-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="QfflMmxHevinkfsIU0Aq-12" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-10" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="删除数据库中的信息" vertex="1">
+          <mxGeometry height="60" width="120" x="350" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="QfflMmxHevinkfsIU0Aq-12" parent="1" style="whiteSpace=wrap;html=1;rounded=0;" value="删除本地目录图书" vertex="1">
+          <mxGeometry height="60" width="120" x="350" y="200" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="YknQRpdlo25RxzLutA6r" name="第 2 页">
+    <mxGraphModel dx="1213" dy="730" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
