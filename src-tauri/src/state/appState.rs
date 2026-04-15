@@ -1,12 +1,6 @@
 use tauri::State;
 
-use crate::{
-    config::{
-        self,
-        appConfig::{self, get_config, AppConfig},
-    },
-    state::{self, appState},
-};
+use crate::config::appConfig::AppConfig;
 use std::sync::Mutex;
 
 #[derive(Debug)]

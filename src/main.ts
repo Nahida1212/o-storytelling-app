@@ -5,6 +5,7 @@ import "@quasar/extras/material-icons/material-icons.css";
 import router from "./routers";
 import { Quasar } from "quasar";
 import { Notify } from "quasar";
+import { Dialog } from "quasar";
 
 const app = createApp(App);
 app.use(router);
@@ -12,6 +13,7 @@ app.use(router);
 app.use(Quasar, {
   plugins: {
     Notify,
+    Dialog,
   },
   config: {
     brand: {

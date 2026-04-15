@@ -15,8 +15,8 @@
     {
       "identifier": "fs:scope",
       "allow": [
-        "$APPDATA/**",          
-        "$DOCUMENT/**",         
+        "$APPDATA/**",
+        "$DOCUMENT/**",
         "$DESKTOP/**",
         "$PICTURE/**"
       ]

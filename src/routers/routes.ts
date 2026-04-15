@@ -1,5 +1,3 @@
-import { path } from "@tauri-apps/api";
-import { forEachChild } from "typescript";
 
 const routes = [
   {
@@ -15,15 +13,16 @@ const routes = [
       { path: "list", component: () => import("../pages/GenerateList.vue") },
 
       {
-        path: "bookDetail",
+        name: "bookDetail",
+        path: "bookDetail/:bookId",
         component: () => import("../pages/BookDetails.vue"),
       },
     ],
   },
 
-  {
-    path: "/readbook",
-  },
+  // {
+  //   path: "/readbook",
+  // },
 ];
 
 export default routes;

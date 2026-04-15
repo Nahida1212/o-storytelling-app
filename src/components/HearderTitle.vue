@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { route } from "quasar/wrappers";
+// import { route } from "quasar/wrappers"; // 未使用
 import { ref } from "vue";
 import { useRouter } from 'vue-router'
 const router = useRouter();
