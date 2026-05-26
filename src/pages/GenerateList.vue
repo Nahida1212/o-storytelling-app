@@ -1,4 +1,5 @@
 <template>
-  <div>生成列表</div>
 </template>
 
+<script setup lang="ts">
+</script>

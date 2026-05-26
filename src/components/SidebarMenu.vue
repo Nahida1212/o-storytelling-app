@@ -1,6 +1,23 @@
 <template>
-  <q-drawer show-if-above :width="250" :breakpoint="700" class="">
-    <q-scroll-area class="fit bg-pink-5">
+  <q-drawer
+    show-if-above
+    :width="250"
+    :breakpoint="700"
+    :mini="miniState"
+    bordered
+    overlaid
+    mini-to-overlay
+    :mini-width="60"
+  >
+    <div class="fit bg-pink-5 column">
+      <q-btn
+        flat
+        dense
+        round
+        :icon="miniState ? 'chevron_right' : 'chevron_left'"
+        class="q-ma-sm text-white self-end"
+        @click="miniState = !miniState"
+      />
       <q-list padding class="bg-pink-5 text-white">
         <q-item
           v-for="item in menuItems"
@@ -14,19 +31,23 @@
           <q-item-section avatar>
             <q-icon :name="item.icon" />
           </q-item-section>
-          <q-item-section>{{ item.label }}</q-item-section>
+          <q-item-section>
+            <q-item-label>{{ item.label }}</q-item-label>
+          </q-item-section>
         </q-item>
       </q-list>
-    </q-scroll-area>
+    </div>
   </q-drawer>
 </template>
 
 <script setup>
-// 菜单数据可以定义在组件内，或通过 props 传入，或从 store 获取
+import { ref } from "vue";
+
+const miniState = ref(true);
+
 const menuItems = [
-  { label: "书架", icon: "inbox", to: "/booklist" },
-  { label: "生成队列", icon: "send", to: "/list" },
-  { label: "角色vicoe", icon: "delete", to: "/character" },
-  // 更多菜单项...
+  { label: "书架", icon: "menu_book", to: "/booklist" },
+  { label: "tts生成", icon: "record_voice_over", to: "/list" },
+  { label: "角色vicoe", icon: "face", to: "/character" },
 ];
 </script>

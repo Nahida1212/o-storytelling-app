@@ -27,7 +27,6 @@ pub fn run() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             greet,
-            tools::upload::file_upload,
             tools::upload::get_all_books,
             tools::illustrations::get_illustrations_by_novel,
             tools::illustrations::add_illustration,
@@ -36,6 +35,10 @@ pub fn run() {
             tools::upload::get_book_details,
             tools::upload::get_book_chapters,
             tools::upload::delete_books,
+            tools::upload::import_book,
+            tools::chapter_processor::process_chapters,
+            tools::chapter_processor::call_llm_on_chunk,
+            tools::chapter_processor::start_tts_generation,
             state::appState::get_config_state,
             state::appState::updata_config_state
         ])

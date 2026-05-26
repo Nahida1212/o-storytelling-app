@@ -67,9 +67,12 @@ import { useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
 import testImage from "@/assets/images/9c72696a2815820251.gif"
 import { open } from '@tauri-apps/plugin-dialog'
+import { readFile } from '@tauri-apps/plugin-fs'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { getConfigState, updataConfigState } from '@/generated/commands'
 import { AppConfig } from '@/generated/types'
+import { parseEpub } from '@/tools/epub'
+import type { ParsedChapter } from '@/tools/epub'
 
 const $q = useQuasar()
 
@@ -119,8 +122,35 @@ async function clickLoad() {
     return
   }
   try {
-    const res = await invoke("file_upload", { file: filePath })
-    console.log('导入成功:', res)
+    // 1. 读取文件二进制数据
+    const fileData = await readFile(filePath)
+    const fileName = filePath.split(/[/\\]/).pop() || 'unknown.epub'
+    console.log("文件读取完成，大小:", fileData.length, "字节");
+
+    // 2. 前端用 epubjs 解析 EPUB
+    console.log("开始解析 EPUB...");
+    const parsed = await parseEpub(fileData.buffer as ArrayBuffer, fileName)
+    console.log("EPUB 解析完成:", parsed.metadata);
+
+    // 3. 直接使用文件名作为标题
+    const title = parsed.fileName
+    const chapters: ParsedChapter[] = parsed.chapters
+    console.log("最终书名:", title, "章节数:", chapters.length);
+
+    // 4. 调用后端存入数据库
+    const novelInfo = await invoke<Book>('import_book', {
+      sourcePath: filePath,
+      title,
+      author: parsed.metadata.author,
+      publisher: parsed.metadata.publisher,
+      description: parsed.metadata.description,
+      chapters: chapters.map(ch => ({
+        title: ch.title,
+        content: ch.content,
+      })),
+    })
+    console.log('导入成功:', novelInfo)
+
     // 导入成功后刷新书籍列表
     await fetchBooks()
     $q.notify({
@@ -131,12 +161,11 @@ async function clickLoad() {
   } catch (e) {
     console.log(e);
     $q.notify({
-      message: e as string,
+      message: typeof e === 'string' ? e : (e as any).message || '导入失败',
       position: "top",
       color: "red"
     })
   }
-
 }
 
 // 切换选择模式/执行删除
@@ -432,9 +461,11 @@ onMounted(async () => {
 }
 
 .book-card img {
+  display: block;
   width: 100%;
   height: 220px;
   object-fit: cover;
+  object-position: top;
   flex-shrink: 0;
 }
 

@@ -1,64 +1,13 @@
 use std::{
+    collections::HashSet,
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use crate::state::appState::AppState;
 use crate::db::dbService;
-use crate::tools::process_novel::{self, ProcessNovelResult};
+use crate::tools::process_novel::{self, ProcessNovelResult, ProcessedIllustration};
 use tauri::{AppHandle, Manager, State};
-#[tauri::command]
-pub fn file_upload(app: AppHandle, state: State<AppState>, file: String) -> Result<String, String> {
-    println!("file {}", file);
-
-    let mut book_path = PathBuf::new();
-    book_path.push(file);
-
-    let file_name = book_path.file_name().unwrap();
-
-    let config_state = state.config.lock().unwrap().clone();
-
-
-    println!("config path {}", config_state.novel_path.to_string_lossy());
-    let mut to_path = config_state.novel_path.clone();
-    to_path.push(file_name);
-    println!("to_path {}" , to_path.to_string_lossy());
-
-
-    // copy file
-    if config_state.use_custom_dir {
-        // use custom dir
-        if config_state.novel_path.exists() {
-            println!("use custom dir {}", config_state.novel_path.to_string_lossy());
-            // path not null, copy file to path where setting
-            fs::copy(&book_path, &to_path)
-                .map_err(|e: std::io::Error| e.to_string())?;
-
-            // processing the novel file
-            let process_result = process_novel::process_novel(&to_path)
-                .map_err(|e| e.to_string())?;
-
-            println!("Processing completed, novel: {}, chapters: {}",
-                     process_result.novel.title, process_result.chapters.len());
-
-            // Save to database
-            save_novel_to_database(&app, &process_result, &to_path, &config_state)
-                .map_err(|e| format!("Failed to save to database: {}", e))?;
-
-            println!("copy file to custom dir success {}", to_path.to_string_lossy());
-        } else {
-            // no set dir
-            // use file original path
-            println!("custom directory does not exist");
-        }
-    } else {
-        // TODO: Handle case when not using custom directory
-        println!("Not using custom directory");
-    }
-
-    Ok("upload file success".to_owned())
-}
-
 /// 保存插图到文件系统和数据库
 fn save_illustrations(
     app: &AppHandle,
@@ -69,11 +18,9 @@ fn save_illustrations(
     use std::fs;
     use std::path::Path;
 
-    // 获取或创建图片目录
-    let base_image_dir = if !config.image_path.as_os_str().is_empty() && config.image_path.exists() {
+    let base_image_dir: PathBuf = if !config.image_path.as_os_str().is_empty() && config.image_path.exists() {
         config.image_path.clone()
     } else {
-        // 使用系统图片目录下的项目文件夹
         let picture_dir = app.path()
             .picture_dir()
             .map_err(|e| format!("Failed to get picture directory: {}", e))?;
@@ -83,7 +30,6 @@ fn save_illustrations(
         project_dir
     };
 
-    // 创建小说特定文件夹（使用小说ID）
     let novel_image_dir = base_image_dir.join(format!("novel-{}", novel_id));
     fs::create_dir_all(&novel_image_dir)
         .map_err(|e| format!("Failed to create novel image directory: {}", e))?;
@@ -93,17 +39,14 @@ fn save_illustrations(
     let mut illustration_data_list = Vec::new();
 
     for (index, illustration) in illustrations.iter().enumerate() {
-        // 生成安全的文件名
         let fallback_name = format!("image_{}", index);
         let original_name = Path::new(&illustration.resource_name)
             .file_name()
             .unwrap_or_else(|| std::ffi::OsStr::new(&fallback_name));
 
         let mut file_name = original_name.to_string_lossy().to_string();
-        // 清理文件名中的非法字符
         file_name = file_name.replace(|c: char| !c.is_alphanumeric() && c != '.' && c != '-', "_");
 
-        // 确保有正确的文件扩展名
         let extension = match illustration.mime_type.as_str() {
             "image/jpeg" => "jpg",
             "image/jpg" => "jpg",
@@ -112,7 +55,6 @@ fn save_illustrations(
             "image/webp" => "webp",
             "image/svg+xml" => "svg",
             _ => {
-                // 从原始文件名提取扩展名
                 Path::new(&illustration.resource_name)
                     .extension()
                     .and_then(|ext| ext.to_str())
@@ -120,32 +62,28 @@ fn save_illustrations(
             }
         };
 
-        // 如果文件名没有扩展名，添加扩展名
         if !file_name.contains('.') {
             file_name = format!("{}.{}", file_name, extension);
         }
 
         let image_path = novel_image_dir.join(&file_name);
 
-        // 保存图片文件
         fs::write(&image_path, &illustration.data)
             .map_err(|e| format!("Failed to write image file {}: {}", image_path.to_string_lossy(), e))?;
 
         println!("Saved illustration: {} ({} bytes)", image_path.to_string_lossy(), illustration.data.len());
 
-        // 准备数据库记录
         let illustration_data = dbService::IllustrationData {
             id: None,
             novel_id,
             image_path: image_path.to_string_lossy().to_string(),
-            description: Some(illustration.resource_name.clone()), // 使用原始资源名作为描述
+            description: Some(illustration.resource_name.clone()),
             chapter_index: illustration.chapter_index,
         };
 
         illustration_data_list.push(illustration_data);
     }
 
-    // 批量插入插图记录
     if !illustration_data_list.is_empty() {
         dbService::insert_illustrations_batch(app, &illustration_data_list)
             .map_err(|e| format!("Failed to insert illustrations to database: {}", e))?;
@@ -170,20 +108,11 @@ fn extract_and_save_cover_image(
         return Ok(None);
     }
 
-    // 尝试找到封面图片
-    let cover_illustration = illustrations.iter().find(|ill| {
-        let name_lower = ill.resource_name.to_lowercase();
-        name_lower.contains("cover") || name_lower.contains("封面")
-    });
-
-    // 如果没有找到封面图片，使用第一个图片
-    let illustration = match cover_illustration {
-        Some(ill) => ill,
-        None => &illustrations[0],
-    };
+    // 第一张图片即为封面
+    let illustration = &illustrations[0];
 
     // 获取或创建图片目录（与save_illustrations相同）
-    let base_image_dir = if !config.image_path.as_os_str().is_empty() && config.image_path.exists() {
+    let base_image_dir: PathBuf = if !config.image_path.as_os_str().is_empty() && config.image_path.exists() {
         config.image_path.clone()
     } else {
         // 使用系统图片目录下的项目文件夹
@@ -285,7 +214,6 @@ fn save_novel_to_database(
     if !process_result.illustrations.is_empty() {
         match extract_and_save_cover_image(app, novel_id, &process_result.illustrations, config) {
             Ok(Some(cover_image_path)) => {
-                // 更新小说封面图片路径
                 dbService::update_novel_cover_image_path(app, novel_id, Some(&cover_image_path))
                     .map_err(|e| format!("Failed to update novel cover image path: {}", e))?;
                 println!("Updated novel cover image path: {}", cover_image_path);
@@ -294,7 +222,6 @@ fn save_novel_to_database(
                 println!("No cover image extracted");
             }
             Err(e) => {
-                // 封面图片保存失败，但不影响整体流程，记录日志
                 println!("Warning: Failed to extract cover image: {}", e);
             }
         }
@@ -312,7 +239,8 @@ fn save_novel_to_database(
             chapter_index,
             title: chapter.title.clone(),
             content: Some(chapter.content.clone()),
-            audio_path: None, // TODO: Add audio path when generated
+            audio_path: None,
+            tts_generated: false,
         };
         chapter_data_list.push(chapter_data);
         chapter_index += 1;
@@ -375,6 +303,8 @@ pub struct ChapterInfo {
     pub id: i32,
     pub title: String,
     pub index: i32,
+    pub content: Option<String>,
+    pub tts_generated: bool,
 }
 
 #[tauri::command]
@@ -412,6 +342,8 @@ pub fn get_book_chapters(app: AppHandle, novel_id: i64) -> Result<Vec<ChapterInf
                 id: chapter.chapter_index,
                 title: chapter.title,
                 index: chapter.chapter_index,
+                content: chapter.content,
+                tts_generated: chapter.tts_generated,
             }
         })
         .collect();
@@ -492,4 +424,247 @@ pub fn delete_books(app: AppHandle, book_ids: Vec<i64>) -> Result<(), String> {
             .map_err(|e| format!("Failed to delete book {} from database: {}", book_id, e))?;
     }
     Ok(())
+}
+
+// ============================================================
+// 新的导入流程（前端 epubjs 解析 + 后端存储）
+// ============================================================
+
+/// 前端解析后的章节数据
+#[derive(serde::Deserialize)]
+pub struct ImportChapterData {
+    pub title: String,
+    pub content: String,
+}
+
+/// 导入书籍：接收前端 epubjs 解析后的结构化数据
+/// - 前端已处理：EPUB 解析、章节提取
+/// - 后端负责：文件复制、数据库写入
+#[tauri::command]
+pub fn import_book(
+    app: AppHandle,
+    state: State<AppState>,
+    source_path: String,
+    title: String,
+    author: Option<String>,
+    #[allow(unused_variables)] publisher: Option<String>,
+    #[allow(unused_variables)] description: Option<String>,
+    chapters: Vec<ImportChapterData>,
+) -> Result<NovelInfo, String> {
+    let config = state.config.lock().unwrap().clone();
+
+    // 1. 复制文件到书籍目录
+    let file_name = Path::new(&source_path)
+        .file_name()
+        .ok_or_else(|| "Invalid file path".to_string())?;
+    let mut dest_path = config.novel_path.clone();
+    dest_path.push(file_name);
+
+    fs::copy(&source_path, &dest_path)
+        .map_err(|e| format!("Failed to copy file: {}", e))?;
+    println!("Copied file to: {}", dest_path.to_string_lossy());
+
+    // 2. 检查是否已存在相同文件
+    if let Ok(Some(existing_id)) = dbService::find_novel_by_file_path(&app, &dest_path) {
+        dbService::delete_novel(&app, existing_id)
+            .map_err(|e| format!("Failed to delete existing novel: {}", e))?;
+        println!("Deleted existing novel with id: {}", existing_id);
+    }
+
+    // 3. 插入小说
+    let novel_data = dbService::NovelData {
+        id: None,
+        title: title.clone(),
+        author: author.clone(),
+        file_path: dest_path.clone(),
+        cover_image: None,
+        cover_image_path: None,
+    };
+    let novel_id = dbService::insert_novel(&app, &novel_data)
+        .map_err(|e| format!("Failed to insert novel: {}", e))?;
+    println!("Inserted novel with id: {}", novel_id);
+
+    // 4. 插入章节
+    let chapter_data_list: Vec<dbService::ChapterData> = chapters
+        .iter()
+        .enumerate()
+        .map(|(i, ch)| dbService::ChapterData {
+            novel_id,
+            chapter_index: i as i32,
+            title: ch.title.clone(),
+            content: Some(ch.content.clone()),
+            audio_path: None,
+            tts_generated: false,
+        })
+        .collect();
+
+    if !chapter_data_list.is_empty() {
+        dbService::insert_chapters_batch(&app, &chapter_data_list)
+            .map_err(|e| format!("Failed to insert chapters: {}", e))?;
+        println!("Inserted {} chapters", chapter_data_list.len());
+    }
+
+    // 5. 从 EPUB 提取所有图片
+    let illustrations = extract_all_images_from_epub(&dest_path)?;
+    let mut cover_image_path: Option<String> = None;
+
+    if !illustrations.is_empty() {
+        // 保存封面
+        match extract_and_save_cover_image(&app, novel_id, &illustrations, &config) {
+            Ok(Some(path)) => {
+                dbService::update_novel_cover_image_path(&app, novel_id, Some(&path))
+                    .map_err(|e| format!("Failed to update cover path: {}", e))?;
+                println!("Saved cover image: {}", path);
+                cover_image_path = Some(path);
+            }
+            Ok(None) => {}
+            Err(e) => eprintln!("Warning: Failed to save cover: {}", e),
+        }
+        // 保存插图
+        save_illustrations(&app, novel_id, &illustrations, &config)?;
+    }
+
+    Ok(NovelInfo {
+        id: novel_id,
+        title,
+        author,
+        file_path: dest_path.to_string_lossy().to_string(),
+        cover_image_path,
+    })
+}
+
+/// 从 EPUB 文件中提取所有图片资源
+fn extract_all_images_from_epub(
+    epub_path: &Path,
+) -> Result<Vec<ProcessedIllustration>, String> {
+    let mut epub_doc = epub::doc::EpubDoc::new(epub_path)
+        .map_err(|e| format!("Failed to open EPUB for images: {:?}", e))?;
+
+    let mut illustrations = Vec::new();
+    let mut seen_names: HashSet<String> = HashSet::new();
+
+    // 1. 优先提取封面（使用内置 get_cover）
+    if let Some((data, mime)) = epub_doc.get_cover() {
+        seen_names.insert("cover".to_string());
+        illustrations.push(ProcessedIllustration {
+            resource_name: "cover".to_string(),
+            mime_type: mime,
+            data,
+            chapter_index: None,
+        });
+        println!("[extract_images] cover image extracted");
+    }
+
+    // 提前克隆 spine 和 resources 数据，避免借用冲突
+    let spine_idrefs: Vec<(usize, String)> = epub_doc.spine.iter()
+        .enumerate()
+        .map(|(i, item)| (i, item.idref.clone()))
+        .collect();
+    let resource_ids: Vec<String> = epub_doc.resources.keys().cloned().collect();
+
+    // 2. 遍历 spine，提取每个页面 HTML 中的 <img> 引用
+    for (i, idref) in &spine_idrefs {
+        let i = *i;
+        if let Some((html, _)) = epub_doc.get_resource_str(idref) {
+            for src in extract_img_srcs(&html) {
+                let fname = Path::new(&src)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                if fname.is_empty() || seen_names.contains(fname) {
+                    continue;
+                }
+                seen_names.insert(fname.to_string());
+
+                // 按路径获取图片数据
+                if let Some(data) = epub_doc.get_resource_by_path(&src) {
+                    let mime = epub_doc.get_resource_mime_by_path(&src)
+                        .unwrap_or_else(|| "image/jpeg".to_string());
+                    illustrations.push(ProcessedIllustration {
+                        resource_name: fname.to_string(),
+                        mime_type: mime,
+                        data,
+                        chapter_index: Some(i as i32),
+                    });
+                    println!("[extract_images]   from spine[{}] by path: '{}'", i, src);
+                } else if let Some((data, mime)) = epub_doc.get_resource(&src) {
+                    // 按资源 id 回退
+                    illustrations.push(ProcessedIllustration {
+                        resource_name: fname.to_string(),
+                        mime_type: mime,
+                        data,
+                        chapter_index: Some(i as i32),
+                    });
+                    println!("[extract_images]   from spine[{}] by id: '{}'", i, src);
+                } else {
+                    println!("[extract_images]   not found: '{}'", src);
+                }
+            }
+        }
+    }
+
+    // 3. 扫描 resources 中未被覆盖的 image/* 类型资源
+    for id in &resource_ids {
+        if seen_names.contains(id) {
+            continue;
+        }
+        let is_image = epub_doc.resources.get(id)
+            .map(|item| item.mime.starts_with("image/"))
+            .unwrap_or(false);
+        if is_image {
+            if let Some((data, mime)) = epub_doc.get_resource(id) {
+                let resource_name = Path::new(id)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(id)
+                    .to_string();
+                illustrations.push(ProcessedIllustration {
+                    resource_name,
+                    mime_type: mime,
+                    data,
+                    chapter_index: None,
+                });
+                seen_names.insert(id.clone());
+                println!("[extract_images]   direct resource: '{}'", id);
+            }
+        }
+    }
+
+    println!("[extract_images] total images extracted: {}", illustrations.len());
+    Ok(illustrations)
+}
+
+/// 从 HTML 中提取 <img src="...">（跳过 data: 内联图片）
+fn extract_img_srcs(html: &str) -> Vec<String> {
+    let mut srcs = Vec::new();
+    let lower = html.to_lowercase();
+    let mut pos = 0;
+    while let Some(img_start) = lower[pos..].find("<img") {
+        let abs_start = pos + img_start;
+        let tag_end = match lower[abs_start..].find('>') {
+            Some(end) => abs_start + end,
+            None => break,
+        };
+        let tag = &lower[abs_start..=tag_end];
+        if let Some(src_start) = tag.find("src=\"") {
+            let start = src_start + 5;
+            if let Some(src_end) = tag[start..].find('"') {
+                let src = &html[abs_start + start..abs_start + start + src_end];
+                if !src.starts_with("data:") {
+                    srcs.push(clean_img_path(src));
+                }
+            }
+        }
+        pos = tag_end + 1;
+    }
+    srcs
+}
+
+/// 清理图片路径（去掉 ../ 前缀）
+fn clean_img_path(src: &str) -> String {
+    if src.starts_with("http://") || src.starts_with("https://") {
+        return src.to_string();
+    }
+    let parts: Vec<&str> = src.split('/').filter(|p| *p != "..").collect();
+    parts.join("/")
 }

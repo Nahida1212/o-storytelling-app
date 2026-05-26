@@ -1,162 +1,42 @@
-<script lang="ts" setup>
-import { ref, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-
-interface BookDetail {
-  id: number;
-  title: string;
-  author: string;
-  cover: string;
-  cover_image_path: string | null;
-  description: string;
-  progress?: number;
-}
-
-interface Chapter {
-  id: number;
-  title: string;
-  index: number;
-}
-
-const route = useRoute();
-const router = useRouter();
-
-const bookDetail = ref<BookDetail | null>(null);
-const chapters = ref<Chapter[]>([]);
-const loading = ref(true);
-const error = ref<string | null>(null);
-
-// 从路由参数获取书籍ID
-const bookId = ref<number | null>(null);
-if (route.params.bookId) {
-  const id = parseInt(route.params.bookId as string, 10);
-  console.log(id);
-  
-  if (!isNaN(id)) {
-    bookId.value = id;
-  }
-}
-
-// 加载书籍详情和章节
-async function loadBookData() {
-  if (!bookId.value) {
-    error.value = "无效的书籍ID";
-    loading.value = false;
-    return;
-  }
-
-  try {
-    loading.value = true;
-    error.value = null;
-
-    // 获取书籍详情
-    const novelInfo: any = await invoke("get_book_details", { novelId: bookId.value });
-    if (novelInfo) {
-      const coverImagePath = novelInfo.cover_image_path;
-      // 确保封面图片路径有效且非空
-      let coverUrl = '';
-      if (coverImagePath && coverImagePath.trim().length > 0) {
-        // 标准化路径 - Windows 反斜杠转换为正斜杠
-        const normalizedPath = coverImagePath.replace(/\\/g, '/');
-        coverUrl = convertFileSrc(normalizedPath);
-        console.log('书籍详情封面图片:', coverImagePath, '标准化:', normalizedPath, '转换后:', coverUrl);
-      }
-      bookDetail.value = {
-        id: novelInfo.id,
-        title: novelInfo.title,
-        author: novelInfo.author || "未知作者",
-        cover: coverUrl, // 转换后的 URL 或空字符串
-        cover_image_path: coverImagePath,
-        description: `文件路径: ${novelInfo.file_path}`, // 暂时用文件路径作为描述
-        progress: 0, // 暂时为0，后续可以从数据库获取阅读进度
-      };
-    } else {
-      error.value = "书籍不存在";
-      return;
-    }
-
-    // 获取章节列表
-    const chapterInfos: any[] = await invoke("get_book_chapters", { novelId: bookId.value });
-    chapters.value = chapterInfos.map((ch: any) => ({
-      id: ch.id,
-      title: ch.title,
-      index: ch.index,
-    }));
-
-  } catch (err: any) {
-    error.value = `加载失败: ${err.message || err}`;
-    console.error("加载书籍数据失败:", err);
-  } finally {
-    loading.value = false;
-  }
-}
-
-// 点击章节跳转阅读
-function readChapter(chapter: Chapter) {
-  if (!bookDetail.value) return;
-  router.push({
-    path: "/readbook",
-    query: { bookId: bookDetail.value.id, chapterId: chapter.id },
-  });
-}
-
-// 开始阅读（从第一章节或上次阅读位置）
-function startReading() {
-  const firstChapter = chapters.value[0];
-  if (firstChapter) {
-    readChapter(firstChapter);
-  }
-}
-
-// 处理图片加载错误
-function onCoverImageError(event: Event) {
-  console.log('封面图片加载失败:', event);
-  // 对于 q-img，我们可能需要设置默认图片
-  // 但由于 q-img 已经设置了默认图片，我们只需要记录错误
-}
-
-// 页面加载时获取数据
-onMounted(() => {
-  loadBookData();
-});
-</script>
 <template>
-  <q-page class="q-pa-md">
+  <q-page padding>
     <!-- 加载状态 -->
     <div v-if="loading" class="text-center q-pa-lg">
       <q-spinner color="pink-6" size="50px" />
-      <div class="text-subtitle1 q-mt-md">加载中...</div>
+      <div class="text-subtitle1 q-mt-md">解析 EPUB 中...</div>
     </div>
 
     <!-- 错误提示 -->
     <div v-else-if="error" class="text-center q-pa-lg">
       <q-icon name="error" color="negative" size="50px" />
       <div class="text-subtitle1 q-mt-md text-negative">{{ error }}</div>
-      <q-btn
-        class="q-mt-md"
-        color="pink-6"
-        rounded
-        label="重试"
-        @click="loadBookData"
-      />
+      <q-btn class="q-mt-md" color="pink-6" rounded label="重新选择" @click="openEpub" />
+    </div>
+
+    <!-- 未加载时显示打开按钮 -->
+    <div v-else-if="!bookDetail" class="text-center q-pa-lg">
+      <q-icon name="menu_book" color="grey-4" size="64px" />
+      <div class="text-h6 text-grey-6 q-mt-md">选择一本 EPUB 书籍查看详情</div>
+      <q-btn class="q-mt-md" color="pink-6" icon="upload_file" label="打开 EPUB" @click="openEpub" />
     </div>
 
     <!-- 书籍详情内容 -->
-    <div v-else-if="bookDetail">
+    <div v-else>
+
+
       <!-- 书籍信息卡片 -->
       <q-card class="book-info-card q-mb-md">
         <q-card-section horizontal>
           <q-img
             class="book-cover"
-            :src="bookDetail.cover || 'https://cdn.quasar.dev/img/parallax2.jpg'"
+            :src="bookDetail.cover"
             style="min-width: 200px; max-width: 240px; min-height: 320px"
             @error="onCoverImageError"
           />
 
           <q-card-section class="column q-pa-md">
             <div class="text-h5 text-weight-bold text-pink-7">
-              {{ bookDetail.title || "默认书名" }}
+              {{ bookDetail.title || "未知书名" }}
             </div>
             <div class="text-subtitle1 text-grey-7 q-mt-xs">
               作者：{{ bookDetail.author || "未知" }}
@@ -195,9 +75,42 @@ onMounted(() => {
       <!-- 章节列表 -->
       <q-card class="chapter-list-card">
         <q-card-section class="q-pa-sm">
-          <div class="text-h6 text-weight-bold text-pink-7 q-px-sm">
-            章节列表
-            <q-badge color="pink-4" :label="chapters.length + '章'" class="q-ml-sm" />
+          <div class="row items-center justify-between q-px-sm">
+            <div class="text-h6 text-weight-bold text-pink-7">
+              章节列表
+              <q-badge color="pink-4" :label="chapters.length + '章'" class="q-ml-sm" />
+            </div>
+            <div class="row items-center q-gutter-sm">
+              <q-btn
+                v-if="!selectMode"
+                dense
+                flat
+                rounded
+                color="pink-6"
+                icon="checklist"
+                label="选择"
+                @click="toggleSelectMode"
+              />
+              <template v-else>
+                <q-btn
+                  dense
+                  flat
+                  rounded
+                  color="pink-6"
+                  icon="close"
+                  label="取消"
+                  @click="toggleSelectMode"
+                />
+                <q-btn
+                  rounded
+                  color="pink-6"
+                  label="提交"
+                  padding="sm md"
+                  :disable="selectedChapters.size === 0"
+                  @click="submitSelection"
+                />
+              </template>
+            </div>
           </div>
         </q-card-section>
 
@@ -210,17 +123,46 @@ onMounted(() => {
         </div>
 
         <!-- 章节列表 -->
+
+        <!-- TTS 生成进度 -->
+        <div v-if="ttsProcessing" class="q-px-md q-py-sm bg-pink-1">
+          <div class="row items-center q-mb-xs">
+            <q-spinner color="pink-6" size="20px" class="q-mr-sm" />
+            <span class="text-caption text-pink-8">{{ ttsProgress.message }}</span>
+          </div>
+          <q-linear-progress
+            :value="ttsProgress.total > 0 ? ttsProgress.processed / ttsProgress.total : 0"
+            color="pink-6"
+            size="6px"
+            stripe
+            animated
+          />
+          <div v-if="ttsProgress.total > 0" class="text-caption text-grey-6 text-right">
+            {{ ttsProgress.processed }} / {{ ttsProgress.total }}
+          </div>
+        </div>
+
         <q-list separator class="chapter-list" v-else>
           <q-item
-            v-for="chapter in chapters"
-            :key="chapter.id"
-            clickable
+            v-for="(chapter, idx) in chapters"
+            :key="idx"
+            :clickable="!selectMode"
             v-ripple
             class="chapter-item"
-            @click="readChapter(chapter)"
+            :class="{
+              'chapter-selected': selectedChapters.has(chapter.index),
+              'chapter-tts-done': chapter.tts_generated && !selectMode,
+            }"
+            @click="selectMode ? toggleChapterSelection(chapter.index) : readChapter(chapter)"
           >
             <q-item-section avatar>
-              <q-badge color="pink-5" :label="chapter.index" rounded />
+              <q-checkbox
+                v-if="selectMode"
+                :model-value="selectedChapters.has(chapter.index)"
+                color="pink-6"
+                @click.prevent="toggleChapterSelection(chapter.index)"
+              />
+              <q-badge v-else color="pink-5" :label="chapter.index + 1" rounded />
             </q-item-section>
 
             <q-item-section>
@@ -230,28 +172,242 @@ onMounted(() => {
             </q-item-section>
 
             <q-item-section side>
-              <q-icon name="chevron_right" color="pink-4" />
+              <q-icon v-if="!selectMode" name="chevron_right" color="pink-4" />
+              <q-icon
+                v-else
+                :name="selectedChapters.has(chapter.index) ? 'check_circle' : 'radio_button_unchecked'"
+                :color="selectedChapters.has(chapter.index) ? 'pink-6' : 'grey-4'"
+              />
             </q-item-section>
           </q-item>
         </q-list>
       </q-card>
     </div>
-
-    <!-- 无数据状态 -->
-    <div v-else class="text-center q-pa-lg">
-      <q-icon name="book" color="grey-5" size="50px" />
-      <div class="text-subtitle1 q-mt-md text-grey-6">书籍数据不存在</div>
-      <q-btn
-        class="q-mt-md"
-        color="pink-6"
-        rounded
-        label="返回书架"
-        @click="router.push('/booklist')"
-      />
-    </div>
   </q-page>
 </template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted } from "vue";
+import { useRoute } from "vue-router";
+import { open } from "@tauri-apps/plugin-dialog";
+import { readFile } from "@tauri-apps/plugin-fs";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { parseEpub } from "@/tools/epub";
+import type { ParsedChapter } from "@/tools/epub";
+
+interface BookDetail {
+  id: number;
+  title: string;
+  author: string;
+  cover: string;
+  description: string;
+  progress: number;
+}
+
+interface TtsGenerationProgress {
+  phase: string;
+  total_chunks: number;
+  processed_chunks: number;
+  message: string;
+}
+
+const route = useRoute();
+const bookDetail = ref<BookDetail | null>(null);
+const chapters = ref<ParsedChapter[]>([]);
+const loading = ref(false);
+const error = ref<string | null>(null);
+
+// 多选状态
+const selectMode = ref(false);
+const selectedChapters = ref<Set<number>>(new Set());
+
+// TTS 处理状态
+const ttsProcessing = ref(false);
+const ttsProgress = ref({ processed: 0, total: 0, message: "" });
+let unlistenTts: (() => void) | null = null;
+
+// 从 BookCollection 导航过来时，自动加载书籍数据
+onMounted(async () => {
+  const bookId = route.params.bookId as string;
+  if (bookId) {
+    await loadBook(parseInt(bookId));
+  }
+});
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value;
+  if (!selectMode.value) {
+    selectedChapters.value = new Set();
+  }
+}
+
+function toggleChapterSelection(chapterIndex: number) {
+  const newSet = new Set(selectedChapters.value);
+  if (newSet.has(chapterIndex)) {
+    newSet.delete(chapterIndex);
+  } else {
+    newSet.add(chapterIndex);
+  }
+  selectedChapters.value = newSet;
+}
+
+function submitSelection() {
+  const indices = Array.from(selectedChapters.value);
+  if (indices.length === 0) return;
+
+  ttsProcessing.value = true;
+  ttsProgress.value = { processed: 0, total: 0, message: "准备生成..." };
+
+  // 监听 TTS 进度事件
+  listen<TtsGenerationProgress>("tts-progress", (event) => {
+    ttsProgress.value = {
+      processed: event.payload.processed_chunks,
+      total: event.payload.total_chunks,
+      message: event.payload.message,
+    };
+    if (event.payload.phase === "complete" || event.payload.phase === "error") {
+      ttsProcessing.value = false;
+      if (unlistenTts) {
+        unlistenTts();
+        unlistenTts = null;
+      }
+    }
+  }).then((unlisten) => {
+    unlistenTts = unlisten;
+  });
+
+  invoke("start_tts_generation", {
+    novelId: bookDetail.value!.id,
+    chapterIds: indices,
+  }).catch((err: any) => {
+    ttsProcessing.value = false;
+    ttsProgress.value.message = `启动失败: ${err}`;
+    if (unlistenTts) {
+      unlistenTts();
+      unlistenTts = null;
+    }
+  });
+}
+
+onUnmounted(() => {
+  if (unlistenTts) {
+    unlistenTts();
+    unlistenTts = null;
+  }
+});
+
+function readChapter(chapter: ParsedChapter) {
+  console.log("阅读章节:", chapter.title, "索引:", chapter.index);
+  // TODO: 后续接入阅读页
+}
+
+function startReading() {
+  const first = chapters.value[0];
+  if (first) readChapter(first);
+}
+
+function onCoverImageError() {
+  // 封面加载失败时的处理
+}
+
+/** 从后端加载书籍详情和章节列表 */
+async function loadBook(bookId: number) {
+  loading.value = true;
+  error.value = null;
+  try {
+    const [detail, backendChapters] = await Promise.all([
+      invoke<any>("get_book_details", { novelId: bookId }),
+      invoke<any[]>("get_book_chapters", { novelId: bookId }),
+    ]);
+
+    if (detail) {
+      let coverUrl = "https://cdn.quasar.dev/img/parallax2.jpg";
+      if (detail.cover_image_path) {
+        coverUrl = convertFileSrc(detail.cover_image_path.replace(/\\/g, "/"));
+      }
+
+      bookDetail.value = {
+        id: detail.id,
+        title: detail.title,
+        author: detail.author || "未知作者",
+        cover: coverUrl,
+        description: `${detail.file_path.split(/[/\\]/).pop() || ""} · ${backendChapters.length} 章`,
+        progress: 0,
+      };
+    }
+
+    chapters.value = backendChapters.map((ch: any) => ({
+      index: ch.index,
+      title: ch.title,
+      content: ch.content || "",
+      imageRefs: [],
+      tts_generated: ch.tts_generated ?? false,
+    }));
+
+    console.log("[loadBook] bookDetail:", JSON.stringify(bookDetail.value));
+    console.log("[loadBook] chapters:", JSON.stringify(chapters.value));
+  } catch (err: any) {
+    console.error("加载书籍失败:", err);
+    error.value = `加载失败: ${err.message || err}`;
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function openEpub() {
+  loading.value = true;
+  error.value = null;
+  bookDetail.value = null;
+  chapters.value = [];
+
+  try {
+    const selected = await open({
+      filters: [{ name: "EPUB 文件", extensions: ["epub"] }],
+      multiple: false,
+    });
+
+    if (!selected) {
+      loading.value = false;
+      return;
+    }
+
+    const data = await readFile(selected);
+    const fileName = selected.split(/[/\\]/).pop() || "unknown.epub";
+    const result = await parseEpub(data.buffer as ArrayBuffer, fileName);
+
+    bookDetail.value = {
+      id: -1,
+      title: result.fileName,
+      author: result.metadata.author || "未知作者",
+      cover: "null",
+      description: `EPUB 文件 · ${result.chapters.length} 章`,
+      progress: 0,
+    };
+
+    chapters.value = result.chapters;
+
+    console.log("[openEpub] bookDetail:", JSON.stringify(bookDetail.value));
+    console.log("[openEpub] chapters:", JSON.stringify(chapters.value));
+    console.log(`解析完成: ${result.chapters.length} 章`);
+  } catch (err: any) {
+    console.error("解析 EPUB 失败:", err);
+    error.value = `加载失败: ${err.message || err}`;
+  } finally {
+    loading.value = false;
+  }
+}
+</script>
+
 <style scoped lang="scss">
+.q-page {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 .book-info-card {
   border-radius: 12px;
 }
@@ -271,5 +427,21 @@ onMounted(() => {
 
 .chapter-item:hover {
   background-color: rgba(233, 30, 99, 0.05);
+}
+
+.chapter-selected {
+  background-color: rgba(233, 30, 99, 0.08);
+}
+
+.chapter-selected:hover {
+  background-color: rgba(233, 30, 99, 0.12);
+}
+
+.chapter-tts-done {
+  background-color: rgba(76, 175, 80, 0.08);
+}
+
+.chapter-tts-done:hover {
+  background-color: rgba(76, 175, 80, 0.14);
 }
 </style>

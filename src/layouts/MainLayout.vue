@@ -28,5 +28,14 @@ import HearderTitle from "../components/HearderTitle.vue";
     </q-page-container>
   </q-layout>
 </template>
-<style scoped></style>
+<style>
+html, body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}
+</style>
 

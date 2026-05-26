@@ -37,5 +37,7 @@ rusqlite = { version = "0.39.0", features = ["bundled"] }
 
 # html 转文字
 html2text = "0.16.7"
-# 读取epub 
+# 读取epub
 epub = "2.1.5"
+# HTTP 客户端（调用大模型 API）
+ureq = "2"

@@ -54,6 +54,7 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<()> {
             title TEXT NOT NULL,
             content TEXT,
             audio_path TEXT,
+            tts_generated INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE,
@@ -76,9 +77,98 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<()> {
         [],
     )?;
 
+    // 创建 dialogues 表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS dialogues (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            novel_id INTEGER NOT NULL,
+            chapter_index INTEGER NOT NULL,
+            dialogue_index INTEGER NOT NULL,
+            character_name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            audio_path TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE,
+            UNIQUE(novel_id, chapter_index, dialogue_index)
+        )",
+        [],
+    )?;
+
+    // 创建 api_keys 表（用于存储大模型密钥）
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            api_key TEXT NOT NULL,
+            base_url TEXT,
+            model TEXT,
+            is_active INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    // 创建 tts_chunks 表（存储每次 LLM API 调用的原始请求和响应，每分片一条）
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS tts_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            novel_id INTEGER NOT NULL,
+            chapter_id INTEGER NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            system_prompt TEXT,
+            user_content TEXT,
+            raw_request TEXT,
+            raw_response TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    // 创建 tts_scripts 表（场景级别的结构化数据，每场景一条）
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS tts_scripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chunk_id INTEGER,
+            novel_id INTEGER NOT NULL,
+            chapter_id INTEGER NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            scene_index INTEGER NOT NULL,
+            scene_type TEXT NOT NULL,
+            content TEXT NOT NULL,
+            character_name TEXT,
+            emotion TEXT NOT NULL DEFAULT 'neutral',
+            speed REAL NOT NULL DEFAULT 1.0,
+            pitch REAL NOT NULL DEFAULT 1.0,
+            pause_duration REAL NOT NULL DEFAULT 0.5,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    // 迁移：为旧 tts_scripts 表添加 chunk_id 列（已存在则跳过）
+    match conn.execute(
+        "ALTER TABLE tts_scripts ADD COLUMN chunk_id INTEGER REFERENCES tts_chunks(id)",
+        [],
+    ) {
+        Ok(_) => println!("[dbStart] 迁移：已添加 chunk_id 列"),
+        Err(e) => println!("[dbStart] 迁移：chunk_id 列已存在 ({})", e),
+    }
+
     // 输出日志
     let db_path = get_database_path(app_handle);
     println!("初始化数据库成功: {:?}", db_path);
+
+    // 迁移：为旧 chapters 表添加 tts_generated 列
+    match conn.execute(
+        "ALTER TABLE chapters ADD COLUMN tts_generated INTEGER DEFAULT 0",
+        [],
+    ) {
+        Ok(_) => println!("[dbStart] 迁移：已添加 tts_generated 列"),
+        Err(e) => println!("[dbStart] 迁移：tts_generated 列已存在 ({})", e),
+    }
 
     Ok(())
 }
