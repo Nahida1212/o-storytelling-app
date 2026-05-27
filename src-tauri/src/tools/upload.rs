@@ -352,6 +352,20 @@ pub fn get_book_chapters(app: AppHandle, novel_id: i64) -> Result<Vec<ChapterInf
 }
 
 #[tauri::command]
+pub fn get_chapter_content(app: AppHandle, novel_id: i64, chapter_index: i32) -> Result<Option<ChapterInfo>, String> {
+    let chapter = dbService::get_chapter_by_index(&app, novel_id, chapter_index)
+        .map_err(|e| format!("获取章节内容失败: {}", e))?;
+
+    Ok(chapter.map(|c| ChapterInfo {
+        id: c.chapter_index,
+        title: c.title,
+        index: c.chapter_index,
+        content: c.content,
+        tts_generated: c.tts_generated,
+    }))
+}
+
+#[tauri::command]
 pub fn delete_books(app: AppHandle, book_ids: Vec<i64>) -> Result<(), String> {
     use std::fs;
 

@@ -157,6 +157,42 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<()> {
         Err(e) => println!("[dbStart] 迁移：chunk_id 列已存在 ({})", e),
     }
 
+    // 创建 character_voices 表（角色语音配置）
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS character_voices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character_name TEXT NOT NULL UNIQUE,
+            ref_audio_path TEXT NOT NULL,
+            prompt_text TEXT,
+            prompt_lang TEXT NOT NULL DEFAULT 'zh',
+            text_lang TEXT NOT NULL DEFAULT 'zh',
+            gpt_model TEXT,
+            sovits_model TEXT,
+            api_base_url TEXT NOT NULL DEFAULT 'http://127.0.0.1:9880',
+            config_path TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+    println!("[dbStart] 已创建 character_voices 表");
+
+    // 创建 chapter_character_voice_map 表（章节角色 ↔ 语音配置映射）
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chapter_character_voice_map (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chapter_id INTEGER NOT NULL,
+            character_name TEXT NOT NULL,
+            voice_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (chapter_id) REFERENCES chapters(id) ON DELETE CASCADE,
+            FOREIGN KEY (voice_id) REFERENCES character_voices(id) ON DELETE CASCADE,
+            UNIQUE(chapter_id, character_name)
+        )",
+        [],
+    )?;
+    println!("[dbStart] 已创建 chapter_character_voice_map 表");
+
     // 输出日志
     let db_path = get_database_path(app_handle);
     println!("初始化数据库成功: {:?}", db_path);
@@ -168,6 +204,15 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<()> {
     ) {
         Ok(_) => println!("[dbStart] 迁移：已添加 tts_generated 列"),
         Err(e) => println!("[dbStart] 迁移：tts_generated 列已存在 ({})", e),
+    }
+
+    // 迁移：为旧 tts_scripts 表添加 audio_path 列
+    match conn.execute(
+        "ALTER TABLE tts_scripts ADD COLUMN audio_path TEXT",
+        [],
+    ) {
+        Ok(_) => println!("[dbStart] 迁移：已添加 audio_path 列到 tts_scripts"),
+        Err(e) => println!("[dbStart] 迁移：tts_scripts.audio_path 列已存在 ({})", e),
     }
 
     Ok(())

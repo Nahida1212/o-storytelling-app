@@ -1,6 +1,8 @@
 use crate::db::dbService;
 use tauri::AppHandle;
 use tauri::Emitter;
+use tauri::Manager;
+use std::io::{Write, Read};
 
 /// 分片后的章节内容块
 #[derive(serde::Serialize, tauri_ts_generator::TS)]
@@ -886,6 +888,324 @@ pub fn start_tts_generation(app: AppHandle, novel_id: i32, chapter_ids: Vec<i32>
         }
     });
 
-    println!("[start_tts_generation] 后台线程已启动, 立即返回");
+    Ok(())
+}
+
+/// Tauri 命令：获取所有已生成 TTS 剧本的章节
+#[tauri::command]
+pub fn get_tts_generated_chapters(app: AppHandle) -> Result<Vec<dbService::TtsGeneratedChapter>, String> {
+    dbService::get_tts_generated_chapters(&app).map_err(|e| e.to_string())
+}
+
+/// Tauri 命令：获取指定章节的 TTS 摘要（角色列表、场景数等）
+#[tauri::command]
+pub fn get_chapter_tts_summary(app: AppHandle, chapter_id: i64) -> Result<dbService::ChapterTtsSummary, String> {
+    dbService::get_chapter_tts_summary(&app, chapter_id).map_err(|e| e.to_string())
+}
+
+// ============================================================
+// 章节角色语音映射
+// ============================================================
+
+/// Tauri 命令：获取所有章节（含小说信息），用于 TTS 生成页面
+#[tauri::command]
+pub fn get_all_chapters(app: AppHandle) -> Result<Vec<dbService::ChapterWithNovel>, String> {
+    dbService::get_all_chapters_grouped_by_novel(&app).map_err(|e| e.to_string())
+}
+
+/// Tauri 命令：获取指定章节的角色→语音映射
+#[tauri::command]
+pub fn get_chapter_character_mappings(app: AppHandle, chapter_id: i64) -> Result<Vec<dbService::ChapterCharacterVoiceMap>, String> {
+    dbService::get_character_voice_mappings_for_chapter(&app, chapter_id).map_err(|e| e.to_string())
+}
+
+/// Tauri 命令：保存章节的角色→语音映射
+/// mappings 格式：[[character_name, voice_id], ...]
+#[tauri::command]
+pub fn save_chapter_character_mappings(app: AppHandle, chapter_id: i64, mappings: Vec<Vec<String>>) -> Result<(), String> {
+    let parsed: Vec<(String, i64)> = mappings
+        .iter()
+        .map(|m| {
+            if m.len() != 2 {
+                return Err("映射格式错误，需要 [character_name, voice_id]".to_string());
+            }
+            let voice_id: i64 = m[1].parse().map_err(|_| "voice_id 解析失败".to_string())?;
+            Ok((m[0].clone(), voice_id))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    dbService::save_character_voice_mappings_for_chapter(&app, chapter_id, &parsed)
+        .map_err(|e| e.to_string())
+}
+
+// ============================================================
+// 音频生成
+// ============================================================
+
+/// 音频生成进度事件
+#[derive(serde::Serialize, Clone)]
+pub struct TtsAudioProgress {
+    pub phase: String,       // "start" | "processing" | "complete" | "error"
+    pub total: usize,
+    pub processed: usize,
+    pub message: String,
+}
+
+/// 后台运行音频生成
+fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), String> {
+    println!("[run_chapter_audio_generation] 开始音频生成，chapter_id={}", chapter_id);
+
+    // 1. 获取章节所有 TTS 场景
+    let scenes = dbService::get_tts_scenes_with_id_by_chapter(app, chapter_id)
+        .map_err(|e| format!("获取 TTS 场景失败: {}", e))?;
+
+    if scenes.is_empty() {
+        return Err("该章节没有 TTS 场景".to_string());
+    }
+
+    // 2. 获取角色→语音映射
+    let mappings = dbService::get_character_voice_mappings_for_chapter(app, chapter_id)
+        .map_err(|e| format!("获取角色映射失败: {}", e))?;
+
+    let voice_map: std::collections::HashMap<String, i64> = mappings
+        .iter()
+        .map(|m| (m.character_name.clone(), m.voice_id))
+        .collect();
+
+    // 3. 获取配置中的 mp3 输出路径
+    let config = app.state::<crate::state::appState::AppState>();
+    let mp3_path = config.config.lock().unwrap().mp3_path.clone();
+
+    if mp3_path.as_os_str().is_empty() {
+        return Err("请先在设置中配置音频输出目录 (mp3_path)".to_string());
+    }
+
+    // 从 scenes 获取 novel_id
+    let novel_id = scenes[0].novel_id;
+    let output_dir = mp3_path.join(novel_id.to_string()).join(chapter_id.to_string());
+    std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
+
+    let total = scenes.len();
+    let mut processed = 0;
+    let mut failed = 0;
+
+    // 发送开始事件
+    let _ = app.emit("tts-audio-progress", TtsAudioProgress {
+        phase: "start".to_string(),
+        total,
+        processed: 0,
+        message: format!("开始音频生成，共 {} 条场景", total),
+    });
+
+    // 4. 遍历场景生成音频
+    for scene in &scenes {
+        let character_name = match &scene.character_name {
+            Some(name) if !name.is_empty() => name.clone(),
+            _ => {
+                println!("[run_chapter_audio_generation] 场景 {} 无角色名，跳过", scene.id);
+                processed += 1;
+                continue;
+            }
+        };
+
+        // 查找角色映射
+        let voice_id = match voice_map.get(&character_name) {
+            Some(id) => id,
+            None => {
+                println!("[run_chapter_audio_generation] 角色 '{}' 未配置语音映射，跳过", character_name);
+                failed += 1;
+                processed += 1;
+                continue;
+            }
+        };
+
+        // 获取语音配置
+        let voice_config = match dbService::get_character_voice_by_id(app, *voice_id) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("[run_chapter_audio_generation] 获取语音配置失败 (voice_id={}): {}", voice_id, e);
+                failed += 1;
+                processed += 1;
+                continue;
+            }
+        };
+
+        // 调用 GPT-SoVITS API 生成音频（最多重试 3 次）
+        let max_retries = 3;
+        let audio_bytes = {
+            let mut last_err = String::new();
+            let mut result = None;
+            for attempt in 1..=max_retries {
+                let adjusted_speed = (scene.speed - 0.2).max(0.5);
+                match call_gptsovits_tts(&voice_config, &scene.content, &scene.emotion, adjusted_speed) {
+                    Ok(bytes) => {
+                        result = Some(bytes);
+                        break;
+                    }
+                    Err(e) => {
+                        last_err = e;
+                        println!(
+                            "[run_chapter_audio_generation] 音频生成失败 (scene_id={}, 第{}/{}){}: {}",
+                            scene.id,
+                            attempt,
+                            max_retries,
+                            if attempt < max_retries { "，即将重试" } else { "，已达最大重试次数" },
+                            last_err,
+                        );
+                    }
+                }
+            }
+            match result {
+                Some(bytes) => bytes,
+                None => {
+                    eprintln!("[run_chapter_audio_generation] 音频生成最终失败 (scene_id={}): {}", scene.id, last_err);
+                    failed += 1;
+                    processed += 1;
+                    continue;
+                }
+            }
+        };
+
+        // 写入音频文件
+        let safe_name = character_name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_");
+        let audio_filename = format!("{}_{}_{}.wav", scene.scene_index, safe_name, scene.id);
+        let audio_path = output_dir.join(&audio_filename);
+
+        if let Err(e) = save_audio_file(&audio_path, &audio_bytes) {
+            println!("[run_chapter_audio_generation] 保存音频文件失败: {}", e);
+            failed += 1;
+            processed += 1;
+            continue;
+        }
+
+        // 更新数据库中的 audio_path
+        let audio_path_str = audio_path.to_string_lossy().to_string();
+        if let Err(e) = dbService::update_tts_script_audio_path(app, scene.id, Some(&audio_path_str)) {
+            println!("[run_chapter_audio_generation] 更新音频路径失败: {}", e);
+        }
+
+        processed += 1;
+
+        // 发送进度事件
+        let _ = app.emit("tts-audio-progress", TtsAudioProgress {
+            phase: "processing".to_string(),
+            total,
+            processed,
+            message: format!("场景 {}/{} 完成 — {}", processed, total, character_name),
+        });
+    }
+
+    // 5. 更新章节 audio_path 指向目录
+    let dir_path_str = output_dir.to_string_lossy().to_string();
+    let _ = dbService::update_chapter_audio_path(app, chapter_id, Some(&dir_path_str));
+
+    // 6. 发送完成事件
+    let status = if failed > 0 { "部分失败" } else { "全部完成" };
+    let _ = app.emit("tts-audio-progress", TtsAudioProgress {
+        phase: "complete".to_string(),
+        total,
+        processed,
+        message: format!("{}，成功 {}/{} 条", status, processed - failed, total),
+    });
+
+    println!("[run_chapter_audio_generation] 完成: {}/{} 成功, {} 失败", processed - failed, total, failed);
+    Ok(())
+}
+
+/// 调用 GPT-SoVITS TTS API 生成音频
+fn call_gptsovits_tts(
+    voice: &dbService::CharacterVoiceData,
+    text: &str,
+    emotion: &str,
+    speed: f64,
+) -> Result<Vec<u8>, String> {
+    let base = voice.api_base_url.trim_end_matches('/').to_string();
+    let url = format!("{}/tts", base);
+
+    // 构建查询参数
+    let params = [
+        ("text", text),
+        ("text_lang", &voice.text_lang),
+        ("ref_audio_path", &voice.ref_audio_path),
+        ("prompt_lang", &voice.prompt_lang),
+        ("prompt_text", voice.prompt_text.as_deref().unwrap_or("")),
+        ("emotion", emotion),
+        ("speed", &speed.to_string()),
+    ];
+
+    let query_string: String = params
+        .iter()
+        .map(|(k, v)| format!("{}={}", urlencoding(k), urlencoding(v)))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    let full_url = format!("{}?{}", url, query_string);
+
+    println!("[call_gptsovits_tts] 请求: {} (文本长度={})", base, text.len());
+
+    let response = ureq::get(&full_url)
+        .call()
+        .map_err(|e| format!("TTS API 请求失败: {}", e))?;
+
+    let status = response.status();
+    if status != 200 {
+        let body = response.into_string().unwrap_or_default();
+        return Err(format!("TTS API 返回错误 ({}): {}", status, body));
+    }
+
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut reader = response.into_reader();
+    reader.read_to_end(&mut bytes).map_err(|e| format!("读取音频数据失败: {}", e))?;
+
+    if bytes.is_empty() {
+        return Err("TTS API 返回空音频数据".to_string());
+    }
+
+    println!("[call_gptsovits_tts] 成功获取音频: {} 字节", bytes.len());
+    Ok(bytes)
+}
+
+/// URL 编码（简单实现，仅编码中文和特殊字符）
+fn urlencoding(input: &str) -> String {
+    let mut result = String::new();
+    for byte in input.bytes() {
+        match byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(byte as char);
+            }
+            b' ' => result.push_str("%20"),
+            _ => {
+                result.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    result
+}
+
+/// 保存音频文件到磁盘
+fn save_audio_file(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
+    let mut file = std::fs::File::create(path).map_err(|e| format!("创建文件失败: {}", e))?;
+    file.write_all(data).map_err(|e| format!("写入文件失败: {}", e))?;
+    println!("[save_audio_file] 已保存: {:?} ({} 字节)", path, data.len());
+    Ok(())
+}
+
+/// Tauri 命令：后台生成指定章节的音频
+#[tauri::command]
+pub fn generate_chapter_audio(app: AppHandle, chapter_id: i64) -> Result<(), String> {
+    println!("[generate_chapter_audio] 收到请求, chapter_id={}", chapter_id);
+
+    std::thread::spawn(move || {
+        if let Err(e) = run_chapter_audio_generation(&app, chapter_id) {
+            eprintln!("[generate_chapter_audio] 后台处理失败: {}", e);
+            let _ = app.emit("tts-audio-progress", TtsAudioProgress {
+                phase: "error".to_string(),
+                total: 0,
+                processed: 0,
+                message: format!("音频生成失败: {}", e),
+            });
+        }
+    });
+
     Ok(())
 }

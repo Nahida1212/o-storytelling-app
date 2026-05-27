@@ -133,6 +133,32 @@ pub fn get_chapters_by_novel_id(app_handle: &tauri::AppHandle, novel_id: i64) ->
     Ok(chapters)
 }
 
+/// 获取单章内容（根据 novel_id 和 chapter_index）
+pub fn get_chapter_by_index(app_handle: &tauri::AppHandle, novel_id: i64, chapter_index: i32) -> Result<Option<ChapterData>> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT novel_id, chapter_index, title, content, audio_path, tts_generated
+         FROM chapters WHERE novel_id = ?1 AND chapter_index = ?2"
+    )?;
+
+    let mut rows = stmt.query_map(params![novel_id, chapter_index], |row| {
+        Ok(ChapterData {
+            novel_id: row.get(0)?,
+            chapter_index: row.get(1)?,
+            title: row.get(2)?,
+            content: row.get(3)?,
+            audio_path: row.get(4)?,
+            tts_generated: row.get::<_, i32>(5)? != 0,
+        })
+    })?;
+
+    match rows.next() {
+        Some(row) => Ok(Some(row?)),
+        None => Ok(None),
+    }
+}
+
 /// 更新章节的 TTS 生成状态
 pub fn update_chapter_tts_generated(app_handle: &tauri::AppHandle, chapter_id: i64, generated: bool) -> Result<()> {
     let mut conn = dbStart::get_database_connection(app_handle)?;
@@ -868,6 +894,50 @@ pub fn get_tts_scripts_by_chapter(app_handle: &tauri::AppHandle, chapter_id: i64
     Ok(results)
 }
 
+/// TTS 章节摘要
+#[derive(Debug, Clone, serde::Serialize, tauri_ts_generator::TS)]
+#[ts(export)]
+pub struct ChapterTtsSummary {
+    pub chapter_id: i64,
+    pub characters: Vec<String>,
+    pub scene_count: i64,
+    pub dialogue_count: i64,
+    pub total_text_length: i64,
+}
+
+/// 查询指定章节的 TTS 摘要（角色列表、场景数等）
+pub fn get_chapter_tts_summary(app_handle: &tauri::AppHandle, chapter_id: i64) -> Result<ChapterTtsSummary> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    // 统计
+    let (scene_count, dialogue_count, total_text_length): (i64, i64, i64) = conn.query_row(
+        "SELECT COUNT(*),
+                SUM(CASE WHEN scene_type = 'dialogue' THEN 1 ELSE 0 END),
+                COALESCE(SUM(LENGTH(content)), 0)
+         FROM tts_scripts WHERE chapter_id = ?1",
+        params![chapter_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+
+    // 去重角色
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT character_name FROM tts_scripts
+         WHERE chapter_id = ?1 AND character_name IS NOT NULL AND character_name != ''
+         ORDER BY character_name"
+    )?;
+    let characters: Vec<String> = stmt.query_map(params![chapter_id], |row| {
+        row.get::<_, String>(0)
+    })?.filter_map(|r| r.ok()).collect();
+
+    Ok(ChapterTtsSummary {
+        chapter_id,
+        characters,
+        scene_count,
+        dialogue_count,
+        total_text_length,
+    })
+}
+
 // ============================================================
 // 章节查询（含完整信息）
 // ============================================================
@@ -910,6 +980,394 @@ pub fn get_chapters_full_info_by_ids(app_handle: &tauri::AppHandle, chapter_ids:
     }
 
     Ok(results)
+}
+
+// ============================================================
+// Character Voice 相关
+// ============================================================
+
+/// 角色语音配置
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, tauri_ts_generator::TS)]
+#[ts(export)]
+pub struct CharacterVoiceData {
+    pub id: Option<i64>,
+    pub character_name: String,
+    pub ref_audio_path: String,
+    pub prompt_text: Option<String>,
+    pub prompt_lang: String,
+    pub text_lang: String,
+    pub gpt_model: Option<String>,
+    pub sovits_model: Option<String>,
+    pub api_base_url: String,
+    pub config_path: Option<String>,
+}
+
+/// 插入角色语音配置
+pub fn insert_character_voice(
+    app_handle: &tauri::AppHandle,
+    data: &CharacterVoiceData,
+) -> Result<i64> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    conn.execute(
+        "INSERT INTO character_voices (character_name, ref_audio_path, prompt_text, prompt_lang, text_lang, gpt_model, sovits_model, api_base_url, config_path, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        params![
+            data.character_name,
+            data.ref_audio_path,
+            data.prompt_text,
+            data.prompt_lang,
+            data.text_lang,
+            data.gpt_model,
+            data.sovits_model,
+            data.api_base_url,
+            data.config_path,
+        ],
+    )?;
+
+    Ok(conn.last_insert_rowid())
+}
+
+/// 获取所有角色语音配置
+pub fn get_all_character_voices(
+    app_handle: &tauri::AppHandle,
+) -> Result<Vec<CharacterVoiceData>> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, character_name, ref_audio_path, prompt_text, prompt_lang, text_lang, gpt_model, sovits_model, api_base_url, config_path
+         FROM character_voices ORDER BY character_name"
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(CharacterVoiceData {
+            id: Some(row.get(0)?),
+            character_name: row.get(1)?,
+            ref_audio_path: row.get(2)?,
+            prompt_text: row.get(3)?,
+            prompt_lang: row.get(4)?,
+            text_lang: row.get(5)?,
+            gpt_model: row.get(6)?,
+            sovits_model: row.get(7)?,
+            api_base_url: row.get(8)?,
+            config_path: row.get(9)?,
+        })
+    })?;
+
+    let mut list = Vec::new();
+    for row in rows {
+        list.push(row?);
+    }
+    Ok(list)
+}
+
+/// 更新角色语音配置
+pub fn update_character_voice(
+    app_handle: &tauri::AppHandle,
+    id: i64,
+    data: &CharacterVoiceData,
+) -> Result<()> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    conn.execute(
+        "UPDATE character_voices SET character_name=?1, ref_audio_path=?2, prompt_text=?3,
+         prompt_lang=?4, text_lang=?5, gpt_model=?6, sovits_model=?7, api_base_url=?8,
+         config_path=?9, updated_at=CURRENT_TIMESTAMP WHERE id=?10",
+        params![
+            data.character_name,
+            data.ref_audio_path,
+            data.prompt_text,
+            data.prompt_lang,
+            data.text_lang,
+            data.gpt_model,
+            data.sovits_model,
+            data.api_base_url,
+            data.config_path,
+            id,
+        ],
+    )?;
+    Ok(())
+}
+
+/// 根据 id 获取角色语音配置
+pub fn get_character_voice_by_id(
+    app_handle: &tauri::AppHandle,
+    id: i64,
+) -> Result<CharacterVoiceData> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+    conn.query_row(
+        "SELECT id, character_name, ref_audio_path, prompt_text, prompt_lang, text_lang,
+                gpt_model, sovits_model, api_base_url, config_path
+         FROM character_voices WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(CharacterVoiceData {
+                id: Some(row.get(0)?),
+                character_name: row.get(1)?,
+                ref_audio_path: row.get(2)?,
+                prompt_text: row.get(3)?,
+                prompt_lang: row.get(4)?,
+                text_lang: row.get(5)?,
+                gpt_model: row.get(6)?,
+                sovits_model: row.get(7)?,
+                api_base_url: row.get(8)?,
+                config_path: row.get(9)?,
+            })
+        },
+    )
+}
+
+/// 删除角色语音配置
+pub fn delete_character_voice(
+    app_handle: &tauri::AppHandle,
+    id: i64,
+) -> Result<()> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+    conn.execute("DELETE FROM character_voices WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// 已生成 TTS 剧本的章节列表（含小说信息）
+#[derive(Debug, serde::Serialize, tauri_ts_generator::TS)]
+#[ts(export)]
+pub struct TtsGeneratedChapter {
+    pub chapter_id: i64,
+    pub novel_id: i64,
+    pub novel_title: String,
+    pub novel_author: Option<String>,
+    pub chapter_index: i32,
+    pub chapter_title: String,
+    pub scene_count: i64,
+}
+
+/// 查询所有已生成 TTS 剧本的章节
+pub fn get_tts_generated_chapters(app_handle: &tauri::AppHandle) -> Result<Vec<TtsGeneratedChapter>> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.novel_id, c.chapter_index, c.title,
+                n.title, n.author,
+                (SELECT COUNT(*) FROM tts_scripts WHERE chapter_id = c.id) AS scene_count
+         FROM chapters c
+         JOIN novels n ON c.novel_id = n.id
+         WHERE c.tts_generated = 1
+         ORDER BY n.title, c.chapter_index"
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(TtsGeneratedChapter {
+            chapter_id: row.get(0)?,
+            novel_id: row.get(1)?,
+            chapter_index: row.get(2)?,
+            chapter_title: row.get(3)?,
+            novel_title: row.get(4)?,
+            novel_author: row.get(5)?,
+            scene_count: row.get(6)?,
+        })
+    })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+// ============================================================
+// Chapter Character Voice Mapping
+// ============================================================
+
+/// 章节角色 ↔ 语音配置映射
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChapterCharacterVoiceMap {
+    pub id: Option<i64>,
+    pub chapter_id: i64,
+    pub character_name: String,
+    pub voice_id: i64,
+}
+
+/// 所有章节（含小说信息），用于 TtsGenerate 页面展示
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ChapterWithNovel {
+    pub chapter_id: i64,
+    pub novel_id: i64,
+    pub novel_title: String,
+    pub novel_author: Option<String>,
+    pub chapter_index: i32,
+    pub chapter_title: String,
+    pub tts_generated: bool,
+    pub scene_count: i64,
+}
+
+/// 查询所有章节（含小说信息），按小说分组、章节排序
+pub fn get_all_chapters_grouped_by_novel(app_handle: &tauri::AppHandle) -> Result<Vec<ChapterWithNovel>> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.novel_id, c.chapter_index, c.title, c.tts_generated,
+                n.title, n.author,
+                (SELECT COUNT(*) FROM tts_scripts WHERE chapter_id = c.id) AS scene_count
+         FROM chapters c
+         JOIN novels n ON c.novel_id = n.id
+         ORDER BY n.title, c.chapter_index"
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(ChapterWithNovel {
+            chapter_id: row.get(0)?,
+            novel_id: row.get(1)?,
+            chapter_index: row.get(2)?,
+            chapter_title: row.get(3)?,
+            tts_generated: row.get::<_, i32>(4)? != 0,
+            novel_title: row.get(5)?,
+            novel_author: row.get(6)?,
+            scene_count: row.get(7)?,
+        })
+    })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+/// 获取指定章节的角色→语音映射列表
+pub fn get_character_voice_mappings_for_chapter(
+    app_handle: &tauri::AppHandle,
+    chapter_id: i64,
+) -> Result<Vec<ChapterCharacterVoiceMap>> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, chapter_id, character_name, voice_id
+         FROM chapter_character_voice_map WHERE chapter_id = ?1
+         ORDER BY character_name"
+    )?;
+
+    let rows = stmt.query_map(params![chapter_id], |row| {
+        Ok(ChapterCharacterVoiceMap {
+            id: Some(row.get(0)?),
+            chapter_id: row.get(1)?,
+            character_name: row.get(2)?,
+            voice_id: row.get(3)?,
+        })
+    })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+/// 保存章节的角色→语音映射（先删旧映射再批量插入）
+pub fn save_character_voice_mappings_for_chapter(
+    app_handle: &tauri::AppHandle,
+    chapter_id: i64,
+    mappings: &[(String, i64)],
+) -> Result<()> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    let tx = conn.transaction()?;
+
+    // 删除旧的映射
+    tx.execute(
+        "DELETE FROM chapter_character_voice_map WHERE chapter_id = ?1",
+        params![chapter_id],
+    )?;
+
+    // 插入新映射
+    for (character_name, voice_id) in mappings {
+        tx.execute(
+            "INSERT INTO chapter_character_voice_map (chapter_id, character_name, voice_id, created_at)
+             VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)",
+            params![chapter_id, character_name, voice_id],
+        )?;
+    }
+
+    tx.commit()?;
+    Ok(())
+}
+
+/// TTS 场景（含 id），用于音频生成
+#[derive(Debug, Clone)]
+pub struct TtsSceneWithId {
+    pub id: i64,
+    pub novel_id: i64,
+    pub chapter_id: i64,
+    pub scene_index: i32,
+    pub character_name: Option<String>,
+    pub content: String,
+    pub emotion: String,
+    pub speed: f64,
+    pub pitch: f64,
+}
+
+/// 获取指定章节的所有 TTS 场景（含 id）
+pub fn get_tts_scenes_with_id_by_chapter(
+    app_handle: &tauri::AppHandle,
+    chapter_id: i64,
+) -> Result<Vec<TtsSceneWithId>> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, novel_id, chapter_id, scene_index, character_name, content, emotion, speed, pitch
+         FROM tts_scripts WHERE chapter_id = ?1
+         ORDER BY chunk_index, scene_index"
+    )?;
+
+    let rows = stmt.query_map(params![chapter_id], |row| {
+        Ok(TtsSceneWithId {
+            id: row.get(0)?,
+            novel_id: row.get(1)?,
+            chapter_id: row.get(2)?,
+            scene_index: row.get(3)?,
+            character_name: row.get(4)?,
+            content: row.get(5)?,
+            emotion: row.get(6)?,
+            speed: row.get(7)?,
+            pitch: row.get(8)?,
+        })
+    })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+/// 更新单条 TTS 场景的音频路径
+pub fn update_tts_script_audio_path(
+    app_handle: &tauri::AppHandle,
+    script_id: i64,
+    audio_path: Option<&str>,
+) -> Result<()> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    conn.execute(
+        "UPDATE tts_scripts SET audio_path = ?1 WHERE id = ?2",
+        params![audio_path, script_id],
+    )?;
+
+    Ok(())
+}
+
+/// 更新章节的 audio_path 字段（标记整章音频已生成）
+pub fn update_chapter_audio_path(
+    app_handle: &tauri::AppHandle,
+    chapter_id: i64,
+    audio_path: Option<&str>,
+) -> Result<()> {
+    let mut conn = dbStart::get_database_connection(app_handle)?;
+
+    conn.execute(
+        "UPDATE chapters SET audio_path = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+        params![audio_path, chapter_id],
+    )?;
+
+    Ok(())
 }
 
 /// 通过 novel_id + chapter_index 定位章节（比用 id 更可靠）
@@ -957,5 +1415,144 @@ pub fn get_chapters_by_novel_and_indices(
         results.push(row?);
     }
 
+    Ok(results)
+}
+
+// ============================================================
+// 音频播放相关数据结构与查询
+// ============================================================
+
+/// 有已生成音频的小说信息
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, tauri_ts_generator::TS)]
+#[ts(export)]
+pub struct NovelWithAudioInfo {
+    pub novel_id: i64,
+    pub novel_title: String,
+    pub novel_author: Option<String>,
+    pub cover_image_path: Option<String>,
+    pub chapter_count: i64,
+}
+
+/// 有已生成音频的章节信息
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, tauri_ts_generator::TS)]
+#[ts(export)]
+pub struct ChapterWithAudioInfo {
+    pub chapter_id: i64,
+    pub novel_id: i64,
+    pub chapter_index: i32,
+    pub chapter_title: String,
+    pub scene_count: i64,
+}
+
+/// 有音频文件的 TTS 场景（用于播放器歌词展示）
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, tauri_ts_generator::TS)]
+#[ts(export)]
+pub struct TtsSceneWithAudio {
+    pub id: i64,
+    pub novel_id: i64,
+    pub chapter_id: i64,
+    pub scene_index: i32,
+    pub scene_type: String,
+    pub content: String,
+    pub character_name: Option<String>,
+    pub emotion: String,
+    pub speed: f64,
+    pub pause_duration: f64,
+    pub audio_path: Option<String>,
+}
+
+/// 查询所有有已生成音频的小说
+pub fn get_novels_with_audio(app_handle: &tauri::AppHandle) -> Result<Vec<NovelWithAudioInfo>> {
+    let conn = dbStart::get_database_connection(app_handle)?;
+    let mut stmt = conn.prepare(
+        "SELECT n.id, n.title, n.author, n.cover_image_path,
+                (SELECT COUNT(*) FROM chapters c2
+                 WHERE c2.novel_id = n.id AND c2.tts_generated = 1
+                   AND c2.audio_path IS NOT NULL AND c2.audio_path != '') AS chapter_count
+         FROM novels n
+         JOIN chapters c ON c.novel_id = n.id
+         WHERE c.tts_generated = 1 AND c.audio_path IS NOT NULL AND c.audio_path != ''
+         GROUP BY n.id
+         ORDER BY n.title"
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(NovelWithAudioInfo {
+            novel_id: row.get(0)?,
+            novel_title: row.get(1)?,
+            novel_author: row.get(2)?,
+            cover_image_path: row.get(3)?,
+            chapter_count: row.get(4)?,
+        })
+    })?;
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+/// 查询指定小说下有已生成音频的章节
+pub fn get_chapters_with_audio(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+) -> Result<Vec<ChapterWithAudioInfo>> {
+    let conn = dbStart::get_database_connection(app_handle)?;
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.novel_id, c.chapter_index, c.title,
+                (SELECT COUNT(*) FROM tts_scripts
+                 WHERE chapter_id = c.id AND audio_path IS NOT NULL AND audio_path != '') AS scene_count
+         FROM chapters c
+         WHERE c.novel_id = ?1 AND c.tts_generated = 1
+           AND c.audio_path IS NOT NULL AND c.audio_path != ''
+         ORDER BY c.chapter_index"
+    )?;
+    let rows = stmt.query_map(params![novel_id], |row| {
+        Ok(ChapterWithAudioInfo {
+            chapter_id: row.get(0)?,
+            novel_id: row.get(1)?,
+            chapter_index: row.get(2)?,
+            chapter_title: row.get(3)?,
+            scene_count: row.get(4)?,
+        })
+    })?;
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+/// 查询指定章节所有有音频的场景
+pub fn get_tts_scenes_with_audio_by_chapter(
+    app_handle: &tauri::AppHandle,
+    chapter_id: i64,
+) -> Result<Vec<TtsSceneWithAudio>> {
+    let conn = dbStart::get_database_connection(app_handle)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, novel_id, chapter_id, scene_index, scene_type, content,
+                character_name, emotion, speed, pause_duration, audio_path
+         FROM tts_scripts WHERE chapter_id = ?1
+           AND audio_path IS NOT NULL AND audio_path != ''
+         ORDER BY chunk_index, scene_index"
+    )?;
+    let rows = stmt.query_map(params![chapter_id], |row| {
+        Ok(TtsSceneWithAudio {
+            id: row.get(0)?,
+            novel_id: row.get(1)?,
+            chapter_id: row.get(2)?,
+            scene_index: row.get(3)?,
+            scene_type: row.get(4)?,
+            content: row.get(5)?,
+            character_name: row.get(6)?,
+            emotion: row.get(7)?,
+            speed: row.get(8)?,
+            pause_duration: row.get(9)?,
+            audio_path: row.get(10)?,
+        })
+    })?;
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
     Ok(results)
 }

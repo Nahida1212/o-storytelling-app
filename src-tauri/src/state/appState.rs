@@ -1,6 +1,6 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 
-use crate::config::appConfig::AppConfig;
+use crate::config::appConfig::{self, AppConfig};
 use std::sync::Mutex;
 
 #[derive(Debug)]
@@ -16,13 +16,17 @@ impl Default for AppState {
 }
 
 pub fn load_state() -> Result<AppState, String> {
-    // read from disk
-
-    // fisrt read return defule
     Ok(AppState::default())
 }
 
-fn get_state() {}
+/// 从磁盘加载配置并更新 state（在 app setup 中调用）
+pub fn load_config_into_state(app: &AppHandle, state: &AppState) {
+    if let Ok(config) = appConfig::load_config(app) {
+        if let Ok(mut current) = state.config.lock() {
+            *current = config;
+        }
+    }
+}
 
 #[tauri::command]
 pub fn get_config_state(state: State<AppState>) -> AppConfig {
@@ -30,9 +34,16 @@ pub fn get_config_state(state: State<AppState>) -> AppConfig {
 }
 
 #[tauri::command]
-pub fn updata_config_state(state: State<AppState>, config: AppConfig) -> Result<String, String> {
+pub fn updata_config_state(
+    app: AppHandle,
+    state: State<AppState>,
+    config: AppConfig,
+) -> Result<String, String> {
     let mut current_config = state.config.lock().map_err(|e| e.to_string())?;
-    *current_config = config;
+    *current_config = config.clone();
+
+    // 持久化到 resource_dir()/setting.json
+    appConfig::save_config(&app, &config)?;
 
     Ok("config ok".to_owned())
 }
