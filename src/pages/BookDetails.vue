@@ -188,7 +188,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
@@ -213,6 +213,7 @@ interface TtsGenerationProgress {
 }
 
 const route = useRoute();
+const router = useRouter();
 const bookDetail = ref<BookDetail | null>(null);
 const chapters = ref<ParsedChapter[]>([]);
 const loading = ref(false);
@@ -298,8 +299,12 @@ onUnmounted(() => {
 });
 
 function readChapter(chapter: ParsedChapter) {
-  console.log("阅读章节:", chapter.title, "索引:", chapter.index);
-  // TODO: 后续接入阅读页
+  const bookId = route.params.bookId as string;
+  if (!bookId) return;
+  router.push({
+    name: "reader",
+    params: { bookId, chapterIndex: chapter.index },
+  });
 }
 
 function startReading() {
