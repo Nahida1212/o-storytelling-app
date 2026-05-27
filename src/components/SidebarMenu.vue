@@ -47,7 +47,8 @@ const miniState = ref(true);
 
 const menuItems = [
   { label: "书架", icon: "menu_book", to: "/booklist" },
-  { label: "tts生成", icon: "record_voice_over", to: "/list" },
+  { label: "tts生成", icon: "record_voice_over", to: "/tts_generate" },
   { label: "角色vicoe", icon: "face", to: "/character" },
+  { label: "语音播放", icon: "headphones", to: "/audio_library" },
 ];
 </script>

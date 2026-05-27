@@ -5,5 +5,7 @@ export interface AppConfig {
   useCustomDir: boolean;
   novelPath: string;
   mp3Path: string;
+  imagePath: string;
+  gptSovitsPath: string;
 }
 

@@ -1,337 +1,681 @@
 <template>
   <q-page padding>
-    <q-card class="q-mb-md">
-      <q-card-section>
-        <div class="text-h6 text-weight-bold text-pink-7">GPT-SoVITS TTS 测试</div>
-        <div class="text-caption text-grey-6">API: POST http://127.0.0.1:9880/tts</div>
-      </q-card-section>
+    <div class="row items-center q-mb-md">
+      <div class="text-h5 text-weight-bold text-pink-7">角色语音配置</div>
+      <q-space />
+      <q-btn
+        rounded
+        color="pink-6"
+        icon="add"
+        label="添加角色"
+        @click="openAddDialog"
+      />
+    </div>
 
-      <q-card-section class="q-gutter-md">
-        <!-- 快捷填充 -->
-        <div class="row items-center q-gutter-sm">
-          <span class="text-caption text-grey-7">快捷填充:</span>
+    <!-- 加载 -->
+    <div v-if="loading" class="text-center q-pa-lg">
+      <q-spinner color="pink-6" size="40px" />
+      <div class="q-mt-sm text-grey-6">加载中...</div>
+    </div>
+
+    <!-- 空状态 -->
+    <div v-else-if="voices.length === 0" class="text-center q-pa-lg">
+      <q-icon name="record_voice_over" color="grey-4" size="64px" />
+      <div class="text-h6 text-grey-6 q-mt-md">暂无角色配置</div>
+      <div class="text-caption text-grey-5">点击右上角"添加角色"创建语音配置</div>
+    </div>
+
+    <!-- 角色列表 -->
+    <div v-else class="q-gutter-sm">
+      <q-card
+        v-for="voice in voices"
+        :key="voice.id"
+        class="voice-card"
+        bordered
+        flat
+      >
+        <q-card-section class="q-py-sm">
+          <div class="row items-center no-wrap">
+            <q-avatar size="44px" color="pink-2" text-color="pink-7" class="q-mr-md">
+              {{ voice.character_name.charAt(0) }}
+            </q-avatar>
+            <div class="column col">
+              <div class="row items-center q-gutter-sm">
+                <div class="text-subtitle1 text-weight-bold text-pink-7">
+                  {{ voice.character_name }}
+                </div>
+                <q-chip
+                  v-if="ttsStatus[voice.id!] === 'running'"
+                  dense
+                  size="12px"
+                  color="positive"
+                  text-color="white"
+                  icon="check_circle"
+                  class="q-ml-sm"
+                >
+                  running
+                </q-chip>
+                <q-chip
+                  v-else-if="ttsStatus[voice.id!] === 'stopped'"
+                  dense
+                  size="12px"
+                  color="grey-5"
+                  text-color="white"
+                  icon="power_off"
+                  class="q-ml-sm"
+                >
+                  stopped
+                </q-chip>
+                <q-chip
+                  v-else
+                  dense
+                  size="12px"
+                  color="grey-3"
+                  text-color="grey-6"
+                  icon="hourglass_empty"
+                  class="q-ml-sm"
+                >
+                  checking
+                </q-chip>
+              </div>
+              <div class="row items-center q-gutter-x-md text-caption text-grey-6">
+                <span class="text-no-wrap">
+                  <q-icon name="audio_file" size="14px" class="q-mr-xs" />
+                  {{ voice.ref_audio_path.split(/[/\\]/).pop() || voice.ref_audio_path }}
+                </span>
+                <span class="text-no-wrap">{{ voice.prompt_lang }} → {{ voice.text_lang }}</span>
+              </div>
+              <div class="row items-center q-gutter-x-md text-caption text-grey-6">
+                <span v-if="voice.gpt_model" class="text-no-wrap">GPT: {{ voice.gpt_model }}</span>
+                <span v-if="voice.sovits_model" class="text-no-wrap">SoVITS: {{ voice.sovits_model }}</span>
+                <span v-if="voice.config_path" class="text-no-wrap text-grey-5">
+                  <q-icon name="settings" size="14px" class="q-mr-xs" />
+                  {{ voice.config_path.split(/[/\\]/).pop() }}
+                </span>
+              </div>
+              <div class="text-caption text-grey-5">{{ voice.api_base_url }}</div>
+            </div>
+          </div>
+        </q-card-section>
+        <q-separator />
+        <q-card-actions class="q-px-md q-py-sm justify-around">
           <q-btn
-            v-for="(preset, i) in presets"
-            :key="i"
-            dense
             flat
             rounded
-            size="sm"
-            color="pink-6"
-            :label="`示例 ${i + 1}`"
-            @click="applyPreset(i)"
-          />
-        </div>
-
-        <!-- 参考音频路径 -->
-        <q-input
-          v-model="refAudioPath"
-          label="参考音频路径 (ref_audio_path)"
-          stack-label
-          outlined
-          color="pink-6"
-          placeholder="D:/GPT-SoVITS/orginal_audio/miyagi_slicer_opt/xxx.wav"
-        />
-
-        <div class="row q-gutter-md">
-          <!-- 文本语言 -->
-          <q-select
-            v-model="textLang"
-            :options="['zh', 'en', 'ja']"
-            label="文本语言 (text_lang)"
-            outlined
-            color="pink-6"
-            style="min-width: 120px"
-          />
-
-          <!-- 提示语言 -->
-          <q-select
-            v-model="promptLang"
-            :options="['zh', 'en', 'ja']"
-            label="提示语言 (prompt_lang)"
-            outlined
-            color="pink-6"
-            style="min-width: 120px"
-          />
-        </div>
-
-        <!-- 提示文本 -->
-        <q-input
-          v-model="promptText"
-          label="参考音频对应文本 (prompt_text)"
-          stack-label
-          outlined
-          color="pink-6"
-          placeholder="参考音频的原始文本"
-        />
-
-        <!-- 合成文本 -->
-        <q-input
-          v-model="ttsText"
-          label="要合成的文本 (text)"
-          stack-label
-          outlined
-          color="pink-6"
-          type="textarea"
-          rows="4"
-          placeholder="输入要转换成语音的文本..."
-        />
-
-        <!-- 操作按钮 -->
-        <div class="row items-center q-gutter-md">
+            color="info"
+            icon="wifi_find"
+            :disable="ttsStatus[voice.id!] === 'checking'"
+            @click="testConnection(voice)"
+          >
+            <q-tooltip>测试连通性</q-tooltip>
+          </q-btn>
           <q-btn
-            color="pink-6"
-            icon="record_voice_over"
-            label="生成语音"
-            :loading="loading"
-            :disable="!ttsText"
+            flat
             rounded
-            @click="generateTts"
+            color="positive"
+            icon="play_arrow"
+            :loading="engineStatus[voice.id!] === 'starting'"
+            :disable="ttsStatus[voice.id!] === 'running'"
+            @click="startEngine(voice)"
+          >
+            <q-tooltip>启动引擎</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            rounded
+            color="negative"
+            icon="stop"
+            :disable="ttsStatus[voice.id!] !== 'running'"
+            @click="stopEngine(voice)"
+          >
+            <q-tooltip>停止引擎</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            rounded
+            color="pink-5"
+            icon="mood"
+            @click="openEmotionDialog(voice)"
+          >
+            <q-tooltip>情绪参考</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            rounded
+            color="grey-6"
+            icon="edit"
+            @click="openEditDialog(voice)"
+          >
+            <q-tooltip>编辑</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            rounded
+            color="negative"
+            icon="delete"
+            @click="confirmDelete(voice)"
+          >
+            <q-tooltip>删除</q-tooltip>
+          </q-btn>
+        </q-card-actions>
+      </q-card>
+    </div>
+
+    <!-- 添加/编辑对话框 -->
+    <q-dialog v-model="dialogVisible" persistent>
+      <q-card style="min-width: 560px; max-width: 640px">
+        <q-card-section class="q-pb-none">
+          <div class="text-h6 text-pink-7">
+            {{ editingVoice ? '编辑角色语音' : '添加角色语音' }}
+          </div>
+        </q-card-section>
+
+        <q-card-section class="q-gutter-y-md">
+          <q-input
+            v-model="form.character_name"
+            label="角色名 *"
+            outlined
+            dense
+            color="pink-6"
+            placeholder="请输入角色名称"
+            :rules="[val => !!val || '角色名不能为空']"
           />
-          <q-chip v-if="statusMsg" :color="statusColor" text-color="white" icon="info">
-            {{ statusMsg }}
-          </q-chip>
-        </div>
-      </q-card-section>
-    </q-card>
 
-    <!-- 音频播放 -->
-    <q-card v-if="audioUrl" class="q-mb-md">
-      <q-card-section>
-        <div class="text-subtitle1 text-weight-bold text-pink-7 q-mb-sm">播放结果</div>
-        <audio
-          ref="audioPlayer"
-          controls
-          style="width: 100%"
-          :src="audioUrl"
-        >
-          您的浏览器不支持 audio 标签
-        </audio>
-      </q-card-section>
-    </q-card>
+          <q-input
+            v-model="form.ref_audio_path"
+            label="参考音频路径 *"
+            outlined
+            dense
+            color="pink-6"
+            placeholder="选择或输入参考音频文件路径"
+            :rules="[val => !!val || '参考音频不能为空']"
+          >
+            <template #append>
+              <q-btn flat dense round color="pink-6" icon="folder_open" @click="pickAudioFile">
+                <q-tooltip>选择音频文件</q-tooltip>
+              </q-btn>
+            </template>
+          </q-input>
 
-    <!-- 原始响应调试 -->
-    <q-card v-if="rawResponse !== null">
-      <q-card-section>
-        <div class="text-subtitle2 text-weight-bold text-pink-7 q-mb-sm">原始响应</div>
-        <pre class="bg-grey-2 q-pa-sm" style="overflow-x: auto; font-size: 12px">{{ rawResponse }}</pre>
-      </q-card-section>
-    </q-card>
+          <q-input
+            v-model="form.prompt_text"
+            label="参考音频对应文本"
+            outlined
+            dense
+            color="pink-6"
+            placeholder="参考音频的原始文本（可选）"
+          />
 
-    <!-- 模型管理 -->
-    <q-card v-if="models !== null">
-      <q-card-section>
-        <div class="text-subtitle1 text-weight-bold text-pink-7 q-mb-sm">模型管理</div>
-
-        <div class="row q-gutter-md">
-          <!-- GPT 模型 -->
-          <div class="col" style="min-width: 200px">
-            <div class="text-caption text-grey-7 q-mb-xs">
-              当前 GPT: <strong>{{ models.current.gpt }}</strong>
-            </div>
-            <q-list dense bordered separator>
-              <q-item
-                v-for="gpt in models.gpt_weights"
-                :key="gpt"
-                clickable
-                v-ripple
-                :active="gpt === models.current.gpt"
-                active-class="bg-pink-2"
-                @click="switchGpt(gpt)"
-              >
-                <q-item-section>
-                  <q-item-label class="text-body2">{{ gpt }}</q-item-label>
-                </q-item-section>
-                <q-item-section side>
-                  <q-icon v-if="gpt === models.current.gpt" name="check" color="pink-6" />
-                </q-item-section>
-              </q-item>
-            </q-list>
+          <div class="row q-gutter-md">
+            <q-select
+              v-model="form.prompt_lang"
+              :options="langOptions"
+              label="参考音频语言"
+              outlined
+              dense
+              color="pink-6"
+              style="min-width: 140px"
+            />
+            <q-select
+              v-model="form.text_lang"
+              :options="langOptions"
+              label="合成文本语言"
+              outlined
+              dense
+              color="pink-6"
+              style="min-width: 140px"
+            />
           </div>
 
-          <!-- SoVITS 模型 -->
-          <div class="col" style="min-width: 200px">
-            <div class="text-caption text-grey-7 q-mb-xs">
-              当前 SoVITS: <strong>{{ models.current.sovits }}</strong>
-            </div>
-            <q-list dense bordered separator>
-              <q-item
-                v-for="sv in models.sovits_weights"
-                :key="sv"
-                clickable
-                v-ripple
-                :active="sv === models.current.sovits"
-                active-class="bg-pink-2"
-                @click="switchSovits(sv)"
-              >
-                <q-item-section>
-                  <q-item-label class="text-body2">{{ sv }}</q-item-label>
-                </q-item-section>
-                <q-item-section side>
-                  <q-icon v-if="sv === models.current.sovits" name="check" color="pink-6" />
-                </q-item-section>
-              </q-item>
-            </q-list>
+          <div class="row q-gutter-md">
+            <q-input
+              v-model="form.gpt_model"
+              label="GPT 模型（可选）"
+              outlined
+              dense
+              color="pink-6"
+              placeholder="选择或输入 GPT 模型文件 (.ckpt)"
+              style="min-width: 220px"
+            >
+              <template #append>
+                <q-btn flat dense round color="pink-6" icon="folder_open" @click="pickGptModel">
+                  <q-tooltip>选择 GPT 模型文件</q-tooltip>
+                </q-btn>
+              </template>
+            </q-input>
+            <q-input
+              v-model="form.sovits_model"
+              label="SoVITS 模型（可选）"
+              outlined
+              dense
+              color="pink-6"
+              placeholder="选择或输入 SoVITS 模型文件 (.pth)"
+              style="min-width: 220px"
+            >
+              <template #append>
+                <q-btn flat dense round color="pink-6" icon="folder_open" @click="pickSovitsModel">
+                  <q-tooltip>选择 SoVITS 模型文件</q-tooltip>
+                </q-btn>
+              </template>
+            </q-input>
           </div>
-        </div>
 
-        <q-chip v-if="modelStatus" :color="modelStatusColor" text-color="white" size="sm" icon="info">
-          {{ modelStatus }}
-        </q-chip>
-      </q-card-section>
-    </q-card>
+          <q-input
+            v-model="form.api_base_url"
+            label="API 地址"
+            outlined
+            dense
+            color="pink-6"
+            placeholder="http://127.0.0.1:9880"
+          />
+
+          <!-- config_path 折叠区域 -->
+          <q-expansion-item
+            dense
+            dense-toggle
+            expand-separator
+            icon="settings"
+            label="tts_infer.yaml 配置路径（可选）"
+            caption="通过 YAML 文件统一配置模型和参考音频"
+          >
+            <q-card class="q-mt-sm">
+              <q-card-section class="q-pa-sm">
+                <q-input
+                  v-model="form.config_path"
+                  label="YAML 文件路径"
+                  outlined
+                  dense
+                  color="pink-6"
+                  placeholder="如: D:/GPT-SoVITS/configs/角色名.yaml"
+                >
+                  <template #append>
+                    <q-btn flat dense round color="pink-6" icon="folder_open" @click="pickYamlFile">
+                      <q-tooltip>选择 YAML 文件</q-tooltip>
+                    </q-btn>
+                  </template>
+                </q-input>
+                <div class="text-caption text-grey-5 q-mt-xs q-ml-xs">
+                  设置此项后，API 将使用此配置文件中的参数
+                </div>
+              </q-card-section>
+            </q-card>
+          </q-expansion-item>
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-pa-md">
+          <q-btn flat rounded label="取消" color="grey-6" v-close-popup />
+          <q-btn
+            rounded
+            :label="editingVoice ? '保存' : '添加'"
+            color="pink-6"
+            :loading="saving"
+            :disable="!form.character_name || !form.ref_audio_path"
+            @click="saveVoice"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- 情绪参考对话框 -->
+    <q-dialog v-model="emotionDialogVisible" persistent>
+      <q-card style="min-width: 520px; max-width: 600px">
+        <q-card-section class="q-pb-none">
+          <div class="text-h6 text-pink-7">
+            情绪参考 — {{ editingEmotionVoice?.character_name }}
+          </div>
+          <div class="text-caption text-grey-5 q-mt-xs">
+            为每种情绪指定参考音频，TTS 合成时据此调整语气
+          </div>
+        </q-card-section>
+
+        <q-card-section class="q-gutter-y-sm">
+          <div
+            v-for="(emotion, index) in emotionList"
+            :key="emotion"
+            class="row items-center q-gutter-sm"
+          >
+            <q-chip dense :color="emotionColors[index]" text-color="white" style="min-width: 64px">
+              {{ emotion }}
+            </q-chip>
+            <q-input
+              :model-value="emotionAudio(emotion)"
+              dense
+              outlined
+              color="pink-6"
+              placeholder="选择参考音频文件"
+              class="col"
+              @update:model-value="val => setEmotionAudio(emotion, val)"
+            >
+              <template #append>
+                <q-btn
+                  flat
+                  dense
+                  round
+                  color="pink-6"
+                  icon="folder_open"
+                  @click="pickEmotionAudio(emotion)"
+                >
+                  <q-tooltip>选择音频文件</q-tooltip>
+                </q-btn>
+              </template>
+            </q-input>
+            <q-btn
+              flat
+              dense
+              round
+              color="negative"
+              icon="clear"
+              size="sm"
+              @click="clearEmotionAudio(emotion)"
+            >
+              <q-tooltip>清除</q-tooltip>
+            </q-btn>
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-pa-md">
+          <q-btn flat rounded label="关闭" color="grey-6" v-close-popup />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, reactive, onMounted } from "vue";
+import { useQuasar } from "quasar";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 
-const API_BASE = "http://127.0.0.1:9880";
+const $q = useQuasar();
 
-const presets = [
-  {
-    label: "示例 1",
-    refAudioPath: "D:/GPT-SoVITS/orginal_audio/miyagi_slicer_opt/1_31807964932-1-30232_(Vocals)_0.0-5.0.wav_0000034240_0000160640.wav",
-    textLang: "ja",
-    promptLang: "ja",
-    promptText: "仙台さん飲み物持ってくるから座って待ってて",
-    ttsText: "紙に書かれた間取りは部屋が二つ。それとは別にキッチンやダイニング、バスルームもある。",
-  },
-  {
-    label: "示例 2",
-    refAudioPath: "D:/GPT-SoVITS/orginal_audio/miyagi_slicer_opt/1_31807964932-1-30232_(Vocals)_124.0-143.5.wav_0000041600_0000209600.wav",
-    textLang: "ja",
-    promptLang: "ja",
-    promptText: "仙台さんがカバンから出してテーブルに置いた桜色の封筒は、",
-    ttsText: "どう考えても一人で住むような部屋じゃない。",
-  },
-];
-
-const refAudioPath = ref("");
-const textLang = ref("zh");
-const promptLang = ref("zh");
-const promptText = ref("");
-const ttsText = ref("世界这么大，我想去看看。");
-
-const loading = ref(false);
-const statusMsg = ref("");
-const statusColor = ref("pink-6");
-const audioUrl = ref<string | null>(null);
-const rawResponse = ref<string | null>(null);
-
-// 模型管理
-const models = ref<{
-  gpt_weights: string[];
-  sovits_weights: string[];
-  current: { gpt: string | null; sovits: string | null };
-} | null>(null);
-const modelStatus = ref("");
-const modelStatusColor = ref("info");
-
-async function fetchModels() {
-  try {
-    const res = await fetch(`${API_BASE}/list_models`);
-    models.value = await res.json();
-    modelStatus.value = "";
-  } catch (err: any) {
-    modelStatus.value = `获取失败: ${err.message}`;
-    modelStatusColor.value = "negative";
-  }
+interface CharacterVoice {
+  id?: number;
+  character_name: string;
+  ref_audio_path: string;
+  prompt_text: string | null;
+  prompt_lang: string;
+  text_lang: string;
+  gpt_model: string | null;
+  sovits_model: string | null;
+  api_base_url: string;
+  config_path: string | null;
 }
 
-async function switchGpt(name: string) {
-  if (!models.value || name === models.value.current.gpt) return;
-  modelStatus.value = `切换 GPT 模型中...`;
-  modelStatusColor.value = "info";
-  try {
-    const dir = "GPT_weights_v2Pro";
-    const res = await fetch(`${API_BASE}/set_gpt_weights?weights_path=${dir}/${name}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.Exception);
-    models.value.current.gpt = name;
-    modelStatus.value = `GPT 已切换至: ${name}`;
-    modelStatusColor.value = "positive";
-  } catch (err: any) {
-    modelStatus.value = `切换失败: ${err.message}`;
-    modelStatusColor.value = "negative";
-  }
-}
+const loading = ref(true);
+const voices = ref<CharacterVoice[]>([]);
+const ttsStatus = reactive<Record<number, string>>({});
+const engineStatus = reactive<Record<number, string>>({});
 
-async function switchSovits(name: string) {
-  if (!models.value || name === models.value.current.sovits) return;
-  modelStatus.value = `切换 SoVITS 模型中...`;
-  modelStatusColor.value = "info";
-  try {
-    const dir = "SoVITS_weights_v2Pro";
-    const res = await fetch(`${API_BASE}/set_sovits_weights?weights_path=${dir}/${name}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.Exception);
-    models.value.current.sovits = name;
-    modelStatus.value = `SoVITS 已切换至: ${name}`;
-    modelStatusColor.value = "positive";
-  } catch (err: any) {
-    modelStatus.value = `切换失败: ${err.message}`;
-    modelStatusColor.value = "negative";
-  }
-}
+// 情绪参考（前端存储，不写入后端）
+const emotionList = ["neutral", "happy", "sad", "angry", "fearful", "surprised"];
+const emotionColors = ["grey-6", "positive", "primary", "negative", "deep-purple-5", "amber-7"];
+const emotionDialogVisible = ref(false);
+const editingEmotionVoice = ref<CharacterVoice | null>(null);
+const emotionRefs = ref({} as Record<number, Record<string, string>>);
 
-onMounted(() => {
-  fetchModels();
+
+const langOptions = ["zh", "en", "ja"];
+
+const dialogVisible = ref(false);
+const editingVoice = ref<CharacterVoice | null>(null);
+const saving = ref(false);
+
+const emptyForm = (): CharacterVoice => ({
+  character_name: "",
+  ref_audio_path: "",
+  prompt_text: null,
+  prompt_lang: "zh",
+  text_lang: "zh",
+  gpt_model: null,
+  sovits_model: null,
+  api_base_url: "http://127.0.0.1:9880",
+  config_path: null,
 });
 
-function applyPreset(index: number) {
-  const p = presets[index];
-  refAudioPath.value = p.refAudioPath;
-  textLang.value = p.textLang;
-  promptLang.value = p.promptLang;
-  promptText.value = p.promptText;
-  ttsText.value = p.ttsText;
-  statusMsg.value = `已填充: ${p.refAudioPath.split("/").pop()}`;
-  statusColor.value = "info";
-  audioUrl.value = null;
-  rawResponse.value = null;
-}
+const form = reactive<CharacterVoice>(emptyForm());
 
-async function generateTts() {
+async function loadData() {
   loading.value = true;
-  statusMsg.value = "请求中...";
-  statusColor.value = "info";
-  audioUrl.value = null;
-  rawResponse.value = null;
-
-  const body = {
-    text: ttsText.value,
-    text_lang: textLang.value,
-    ref_audio_path: refAudioPath.value,
-    prompt_lang: promptLang.value,
-    prompt_text: promptText.value,
-    media_type: "wav",
-    streaming_mode: false,
-  };
-
   try {
-    const res = await fetch(`${API_BASE}/tts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(err.Exception || err.message || `HTTP ${res.status}`);
+    voices.value = await invoke<CharacterVoice[]>("get_all_character_voices");
+    // 初始状态设为 stopped，不自动轮询
+    for (const voice of voices.value) {
+      if (voice.id != null) {
+        ttsStatus[voice.id] = "stopped";
+      }
     }
-
-    // 成功 — 将 wav 二进制转为 blob URL
-    const blob = await res.blob();
-    audioUrl.value = URL.createObjectURL(blob);
-    statusMsg.value = `成功 (${(blob.size / 1024).toFixed(1)} KB)`;
-    statusColor.value = "positive";
   } catch (err: any) {
-    statusMsg.value = `失败: ${err.message}`;
-    statusColor.value = "negative";
-    rawResponse.value = err.message;
+    console.error("加载失败:", err);
   } finally {
     loading.value = false;
   }
 }
+
+async function checkTtsStatus(voice: CharacterVoice, maxRetries = 20) {
+  const id = voice.id;
+  if (id == null) return;
+  const base = voice.api_base_url.replace(/\/+$/, "");
+  for (let i = 0; i < maxRetries; i++) {
+    // 外部已停止（如点了停止按钮），退出轮询
+    if (ttsStatus[id] === 'stopped') return;
+
+    ttsStatus[id] = "checking";
+    try {
+      const res = await fetch(`${base}/list_models`, { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        ttsStatus[id] = "running";
+        $q.notify({ type: "positive", message: `引擎已就绪 — ${voice.character_name}`, timeout: 2000 });
+        return;
+      }
+    } catch {
+      // 服务尚未就绪，继续轮询
+    }
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  ttsStatus[id] = "stopped";
+  $q.notify({ type: "negative", message: `引擎启动超时 — ${voice.character_name}，请检查日志`, timeout: 5000 });
+}
+
+async function startEngine(voice: CharacterVoice) {
+  const id = voice.id;
+  if (id == null) return;
+  if (engineStatus[id] === 'starting' || ttsStatus[id] === 'running') return;
+  engineStatus[id] = 'starting';
+  $q.notify({ type: "info", message: `正在启动引擎 — ${voice.character_name}`, timeout: 2000 });
+  try {
+    await invoke("start_engine", { characterId: id });
+    engineStatus[id] = 'running';
+    ttsStatus[id] = "checking";
+    $q.notify({ type: "info", message: `进程已启动，等待 API 就绪... ${voice.character_name}`, timeout: 3000 });
+    await checkTtsStatus(voice);
+  } catch (err: any) {
+    console.error("启动引擎失败:", err);
+    engineStatus[id] = 'stopped';
+    ttsStatus[id] = 'stopped';
+    $q.notify({ type: "negative", message: `启动失败: ${err}`, timeout: 5000 });
+  }
+}
+
+async function stopEngine(voice: CharacterVoice) {
+  const id = voice.id;
+  if (id == null) return;
+  try {
+    await invoke("stop_engine", { characterId: id });
+    engineStatus[id] = 'stopped';
+    ttsStatus[id] = "stopped";
+  } catch (err: any) {
+    console.error("停止引擎失败:", err);
+  }
+}
+
+async function testConnection(voice: CharacterVoice) {
+  const id = voice.id;
+  if (id == null) return;
+  ttsStatus[id] = "checking";
+  const base = voice.api_base_url.replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${base}/list_models`, { signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      ttsStatus[id] = "running";
+      $q.notify({ type: "positive", message: `引擎连接正常 — ${voice.character_name}`, timeout: 2000 });
+    } else {
+      ttsStatus[id] = "stopped";
+      $q.notify({ type: "negative", message: `引擎响应异常 — ${voice.character_name}`, timeout: 3000 });
+    }
+  } catch {
+    ttsStatus[id] = "stopped";
+    $q.notify({ type: "negative", message: `引擎连接失败 — ${voice.character_name}，请确认引擎已启动`, timeout: 3000 });
+  }
+}
+
+function openAddDialog() {
+  editingVoice.value = null;
+  Object.assign(form, emptyForm());
+  dialogVisible.value = true;
+}
+
+function openEditDialog(voice: CharacterVoice) {
+  editingVoice.value = voice;
+  Object.assign(form, { ...voice });
+  dialogVisible.value = true;
+}
+
+async function saveVoice() {
+  saving.value = true;
+  try {
+    if (editingVoice.value) {
+      await invoke("update_character_voice", {
+        id: editingVoice.value.id,
+        data: { ...form },
+      });
+    } else {
+      await invoke("create_character_voice", {
+        data: { ...form },
+      });
+    }
+    dialogVisible.value = false;
+    await loadData();
+  } catch (err: any) {
+    console.error("保存失败:", err);
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function confirmDelete(voice: CharacterVoice) {
+  try {
+    await invoke("delete_character_voice", { id: voice.id });
+    await loadData();
+  } catch (err: any) {
+    console.error("删除失败:", err);
+  }
+}
+
+async function pickAudioFile() {
+  try {
+    const selected = await open({
+      filters: [{ name: "音频文件", extensions: ["wav", "mp3", "flac", "ogg"] }],
+      multiple: false,
+    });
+    if (selected) form.ref_audio_path = selected;
+  } catch (err: any) {
+    console.error("文件选择失败:", err);
+  }
+}
+
+async function pickYamlFile() {
+  try {
+    const selected = await open({
+      filters: [{ name: "YAML 文件", extensions: ["yaml", "yml"] }],
+      multiple: false,
+    });
+    if (selected) form.config_path = selected;
+  } catch (err: any) {
+    console.error("文件选择失败:", err);
+  }
+}
+
+async function pickGptModel() {
+  try {
+    const selected = await open({
+      title: "选择 GPT 模型文件",
+      filters: [{ name: "GPT 模型", extensions: ["ckpt"] }],
+      multiple: false,
+    });
+    if (selected) form.gpt_model = selected;
+  } catch (err: any) {
+    console.error("文件选择失败:", err);
+  }
+}
+
+async function pickSovitsModel() {
+  try {
+    const selected = await open({
+      title: "选择 SoVITS 模型文件",
+      filters: [{ name: "SoVITS 模型", extensions: ["pth"] }],
+      multiple: false,
+    });
+    if (selected) form.sovits_model = selected;
+  } catch (err: any) {
+    console.error("文件选择失败:", err);
+  }
+}
+
+// ----- 情绪参考 -----
+
+function openEmotionDialog(voice: CharacterVoice) {
+  editingEmotionVoice.value = voice;
+  const id = voice.id;
+  if (id != null && !emotionRefs.value[id]) {
+    emotionRefs.value[id] = {};
+  }
+  emotionDialogVisible.value = true;
+}
+
+function emotionAudio(emotion: string): string {
+  const id = editingEmotionVoice.value?.id;
+  if (id == null) return "";
+  return emotionRefs.value[id]?.[emotion] ?? "";
+}
+
+function setEmotionAudio(emotion: string, val: any) {
+  const id = editingEmotionVoice.value?.id;
+  if (id == null) return;
+  if (!emotionRefs.value[id]) emotionRefs.value[id] = {};
+  emotionRefs.value[id][emotion] = val ?? "";
+}
+
+function clearEmotionAudio(emotion: string) {
+  const id = editingEmotionVoice.value?.id;
+  if (id == null) return;
+  if (emotionRefs.value[id]) {
+    delete emotionRefs.value[id][emotion];
+  }
+}
+
+async function pickEmotionAudio(emotion: string) {
+  try {
+    const selected = await open({
+      title: `选择情绪 "${emotion}" 参考音频`,
+      filters: [{ name: "音频文件", extensions: ["wav", "mp3", "flac", "ogg"] }],
+      multiple: false,
+    });
+    if (selected) setEmotionAudio(emotion, selected);
+  } catch (err: any) {
+    console.error("文件选择失败:", err);
+  }
+}
+
+onMounted(loadData);
 </script>
+
+<style scoped lang="scss">
+.voice-card {
+  border-radius: 10px;
+  transition: background-color 0.15s;
+}
+.voice-card:hover {
+  background-color: rgba(233, 30, 99, 0.03);
+}
+</style>
