@@ -4,9 +4,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::state::app_state::AppState;
 use crate::db::db_service;
-use crate::tools::process_novel::{ProcessNovelResult, ProcessedIllustration};
+use crate::state::app_state::AppState;
+use crate::tools::process_novel::ProcessedIllustration;
 use tauri::{AppHandle, Manager, State};
 /// 保存插图到文件系统和数据库
 fn save_illustrations(
@@ -18,23 +18,28 @@ fn save_illustrations(
     use std::fs;
     use std::path::Path;
 
-    let base_image_dir: PathBuf = if !config.image_path.as_os_str().is_empty() && config.image_path.exists() {
-        config.image_path.clone()
-    } else {
-        let picture_dir = app.path()
-            .picture_dir()
-            .map_err(|e| format!("Failed to get picture directory: {}", e))?;
-        let project_dir = picture_dir.join("o-storytelling-app");
-        fs::create_dir_all(&project_dir)
-            .map_err(|e| format!("Failed to create project image directory: {}", e))?;
-        project_dir
-    };
+    let base_image_dir: PathBuf =
+        if !config.image_path.as_os_str().is_empty() && config.image_path.exists() {
+            config.image_path.clone()
+        } else {
+            let picture_dir = app
+                .path()
+                .picture_dir()
+                .map_err(|e| format!("Failed to get picture directory: {}", e))?;
+            let project_dir = picture_dir.join("o-storytelling-app");
+            fs::create_dir_all(&project_dir)
+                .map_err(|e| format!("Failed to create project image directory: {}", e))?;
+            project_dir
+        };
 
     let novel_image_dir = base_image_dir.join(format!("novel-{}", novel_id));
     fs::create_dir_all(&novel_image_dir)
         .map_err(|e| format!("Failed to create novel image directory: {}", e))?;
 
-    println!("Saving illustrations to: {}", novel_image_dir.to_string_lossy());
+    println!(
+        "Saving illustrations to: {}",
+        novel_image_dir.to_string_lossy()
+    );
 
     let mut illustration_data_list = Vec::new();
 
@@ -54,12 +59,10 @@ fn save_illustrations(
             "image/gif" => "gif",
             "image/webp" => "webp",
             "image/svg+xml" => "svg",
-            _ => {
-                Path::new(&illustration.resource_name)
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    .unwrap_or("bin")
-            }
+            _ => Path::new(&illustration.resource_name)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("bin"),
         };
 
         if !file_name.contains('.') {
@@ -68,10 +71,19 @@ fn save_illustrations(
 
         let image_path = novel_image_dir.join(&file_name);
 
-        fs::write(&image_path, &illustration.data)
-            .map_err(|e| format!("Failed to write image file {}: {}", image_path.to_string_lossy(), e))?;
+        fs::write(&image_path, &illustration.data).map_err(|e| {
+            format!(
+                "Failed to write image file {}: {}",
+                image_path.to_string_lossy(),
+                e
+            )
+        })?;
 
-        println!("Saved illustration: {} ({} bytes)", image_path.to_string_lossy(), illustration.data.len());
+        println!(
+            "Saved illustration: {} ({} bytes)",
+            image_path.to_string_lossy(),
+            illustration.data.len()
+        );
 
         let illustration_data = db_service::IllustrationData {
             id: None,
@@ -87,7 +99,10 @@ fn save_illustrations(
     if !illustration_data_list.is_empty() {
         db_service::insert_illustrations_batch(app, &illustration_data_list)
             .map_err(|e| format!("Failed to insert illustrations to database: {}", e))?;
-        println!("Inserted {} illustrations to database", illustration_data_list.len());
+        println!(
+            "Inserted {} illustrations to database",
+            illustration_data_list.len()
+        );
     }
 
     Ok(())
@@ -112,18 +127,20 @@ fn extract_and_save_cover_image(
     let illustration = &illustrations[0];
 
     // 获取或创建图片目录（与save_illustrations相同）
-    let base_image_dir: PathBuf = if !config.image_path.as_os_str().is_empty() && config.image_path.exists() {
-        config.image_path.clone()
-    } else {
-        // 使用系统图片目录下的项目文件夹
-        let picture_dir = app.path()
-            .picture_dir()
-            .map_err(|e| format!("Failed to get picture directory: {}", e))?;
-        let project_dir = picture_dir.join("o-storytelling-app");
-        fs::create_dir_all(&project_dir)
-            .map_err(|e| format!("Failed to create project image directory: {}", e))?;
-        project_dir
-    };
+    let base_image_dir: PathBuf =
+        if !config.image_path.as_os_str().is_empty() && config.image_path.exists() {
+            config.image_path.clone()
+        } else {
+            // 使用系统图片目录下的项目文件夹
+            let picture_dir = app
+                .path()
+                .picture_dir()
+                .map_err(|e| format!("Failed to get picture directory: {}", e))?;
+            let project_dir = picture_dir.join("o-storytelling-app");
+            fs::create_dir_all(&project_dir)
+                .map_err(|e| format!("Failed to create project image directory: {}", e))?;
+            project_dir
+        };
 
     // 创建小说特定文件夹（使用小说ID）
     let novel_image_dir = base_image_dir.join(format!("novel-{}", novel_id));
@@ -168,10 +185,19 @@ fn extract_and_save_cover_image(
     let cover_image_path = novel_image_dir.join(&file_name);
 
     // 保存图片文件
-    fs::write(&cover_image_path, &illustration.data)
-        .map_err(|e| format!("Failed to write cover image file {}: {}", cover_image_path.to_string_lossy(), e))?;
+    fs::write(&cover_image_path, &illustration.data).map_err(|e| {
+        format!(
+            "Failed to write cover image file {}: {}",
+            cover_image_path.to_string_lossy(),
+            e
+        )
+    })?;
 
-    println!("Saved cover image: {} ({} bytes)", cover_image_path.to_string_lossy(), illustration.data.len());
+    println!(
+        "Saved cover image: {} ({} bytes)",
+        cover_image_path.to_string_lossy(),
+        illustration.data.len()
+    );
 
     // 返回相对路径或绝对路径？返回绝对路径以便前端使用
     // 注意：前端可能需要通过Tauri的asset协议访问
@@ -275,8 +301,8 @@ pub struct NovelInfo {
 
 #[tauri::command]
 pub fn get_all_books(app: AppHandle) -> Result<Vec<NovelInfo>, String> {
-    let novels = db_service::get_all_novels(&app)
-        .map_err(|e| format!("Failed to get novels: {}", e))?;
+    let novels =
+        db_service::get_all_novels(&app).map_err(|e| format!("Failed to get novels: {}", e))?;
 
     let novel_infos: Vec<NovelInfo> = novels
         .into_iter()
@@ -352,7 +378,11 @@ pub fn get_book_chapters(app: AppHandle, novel_id: i64) -> Result<Vec<ChapterInf
 }
 
 #[tauri::command]
-pub fn get_chapter_content(app: AppHandle, novel_id: i64, chapter_index: i32) -> Result<Option<ChapterInfo>, String> {
+pub fn get_chapter_content(
+    app: AppHandle,
+    novel_id: i64,
+    chapter_index: i32,
+) -> Result<Option<ChapterInfo>, String> {
     let chapter = db_service::get_chapter_by_index(&app, novel_id, chapter_index)
         .map_err(|e| format!("获取章节内容失败: {}", e))?;
 
@@ -378,7 +408,11 @@ pub fn delete_books(app: AppHandle, book_ids: Vec<i64>) -> Result<(), String> {
             // 删除小说文件
             if novel.file_path.exists() {
                 if let Err(e) = fs::remove_file(&novel.file_path) {
-                    eprintln!("Warning: Failed to delete novel file {}: {}", novel.file_path.display(), e);
+                    eprintln!(
+                        "Warning: Failed to delete novel file {}: {}",
+                        novel.file_path.display(),
+                        e
+                    );
                     // 继续执行，不因为文件删除失败而终止
                 } else {
                     println!("Deleted novel file: {}", novel.file_path.display());
@@ -390,7 +424,11 @@ pub fn delete_books(app: AppHandle, book_ids: Vec<i64>) -> Result<(), String> {
                 let cover_path = std::path::Path::new(cover_path);
                 if cover_path.exists() {
                     if let Err(e) = fs::remove_file(cover_path) {
-                        eprintln!("Warning: Failed to delete cover image {}: {}", cover_path.display(), e);
+                        eprintln!(
+                            "Warning: Failed to delete cover image {}: {}",
+                            cover_path.display(),
+                            e
+                        );
                     } else {
                         println!("Deleted cover image: {}", cover_path.display());
                     }
@@ -405,7 +443,11 @@ pub fn delete_books(app: AppHandle, book_ids: Vec<i64>) -> Result<(), String> {
                 let image_path = std::path::Path::new(&illustration.image_path);
                 if image_path.exists() {
                     if let Err(e) = fs::remove_file(image_path) {
-                        eprintln!("Warning: Failed to delete illustration {}: {}", image_path.display(), e);
+                        eprintln!(
+                            "Warning: Failed to delete illustration {}: {}",
+                            image_path.display(),
+                            e
+                        );
                     } else {
                         println!("Deleted illustration: {}", image_path.display());
                     }
@@ -424,7 +466,10 @@ pub fn delete_books(app: AppHandle, book_ids: Vec<i64>) -> Result<(), String> {
                                 if let Err(e) = fs::remove_dir(parent_dir) {
                                     eprintln!("Warning: Failed to remove empty illustration directory {}: {}", parent_dir.display(), e);
                                 } else {
-                                    println!("Removed empty illustration directory: {}", parent_dir.display());
+                                    println!(
+                                        "Removed empty illustration directory: {}",
+                                        parent_dir.display()
+                                    );
                                 }
                             }
                         }
@@ -474,8 +519,7 @@ pub fn import_book(
     let mut dest_path = config.novel_path.clone();
     dest_path.push(file_name);
 
-    fs::copy(&source_path, &dest_path)
-        .map_err(|e| format!("Failed to copy file: {}", e))?;
+    fs::copy(&source_path, &dest_path).map_err(|e| format!("Failed to copy file: {}", e))?;
     println!("Copied file to: {}", dest_path.to_string_lossy());
 
     // 2. 检查是否已存在相同文件
@@ -548,9 +592,7 @@ pub fn import_book(
 }
 
 /// 从 EPUB 文件中提取所有图片资源
-fn extract_all_images_from_epub(
-    epub_path: &Path,
-) -> Result<Vec<ProcessedIllustration>, String> {
+fn extract_all_images_from_epub(epub_path: &Path) -> Result<Vec<ProcessedIllustration>, String> {
     let mut epub_doc = epub::doc::EpubDoc::new(epub_path)
         .map_err(|e| format!("Failed to open EPUB for images: {:?}", e))?;
 
@@ -570,7 +612,9 @@ fn extract_all_images_from_epub(
     }
 
     // 提前克隆 spine 和 resources 数据，避免借用冲突
-    let spine_idrefs: Vec<(usize, String)> = epub_doc.spine.iter()
+    let spine_idrefs: Vec<(usize, String)> = epub_doc
+        .spine
+        .iter()
         .enumerate()
         .map(|(i, item)| (i, item.idref.clone()))
         .collect();
@@ -592,7 +636,8 @@ fn extract_all_images_from_epub(
 
                 // 按路径获取图片数据
                 if let Some(data) = epub_doc.get_resource_by_path(&src) {
-                    let mime = epub_doc.get_resource_mime_by_path(&src)
+                    let mime = epub_doc
+                        .get_resource_mime_by_path(&src)
                         .unwrap_or_else(|| "image/jpeg".to_string());
                     illustrations.push(ProcessedIllustration {
                         resource_name: fname.to_string(),
@@ -622,7 +667,9 @@ fn extract_all_images_from_epub(
         if seen_names.contains(id) {
             continue;
         }
-        let is_image = epub_doc.resources.get(id)
+        let is_image = epub_doc
+            .resources
+            .get(id)
             .map(|item| item.mime.starts_with("image/"))
             .unwrap_or(false);
         if is_image {
@@ -644,7 +691,10 @@ fn extract_all_images_from_epub(
         }
     }
 
-    println!("[extract_images] total images extracted: {}", illustrations.len());
+    println!(
+        "[extract_images] total images extracted: {}",
+        illustrations.len()
+    );
     Ok(illustrations)
 }
 

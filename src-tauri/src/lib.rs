@@ -7,9 +7,9 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 pub mod config;
+pub mod db;
 pub mod state;
 pub mod tools;
-pub mod db;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -72,7 +72,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn test_lsp() {
-    let x: Option<i32> = Some(10);
-    x.unwrap();
-}
+// fn test_lsp() {
+//     let x: Option<i32> = Some(10);
+//     x.unwrap();
+// }

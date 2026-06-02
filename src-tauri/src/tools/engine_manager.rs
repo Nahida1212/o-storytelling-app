@@ -31,7 +31,11 @@ fn parse_port(api_base_url: &str) -> &str {
     let base = api_base_url.trim_end_matches('/');
     if let Some(port_start) = base.rfind(':') {
         let after_colon = &base[port_start + 1..];
-        if after_colon.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+        if after_colon
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_digit())
+        {
             let port = after_colon.split(['/', '?']).next().unwrap_or(after_colon);
             return port;
         }
@@ -113,10 +117,7 @@ pub fn start_engine(
 }
 
 #[tauri::command]
-pub fn stop_engine(
-    processes: State<EngineProcesses>,
-    character_id: i64,
-) -> Result<(), String> {
+pub fn stop_engine(processes: State<EngineProcesses>, character_id: i64) -> Result<(), String> {
     let mut map = processes.0.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = map.remove(&character_id) {
         child.kill().map_err(|e| format!("停止引擎失败: {}", e))?;

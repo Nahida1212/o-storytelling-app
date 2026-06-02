@@ -1,5 +1,5 @@
+use rusqlite::{params, Result};
 use std::path::PathBuf;
-use rusqlite::{Result, params};
 
 use super::db_start;
 
@@ -28,7 +28,7 @@ pub struct ChapterData {
 /// 插入小说到数据库
 /// 返回新插入小说的ID
 pub fn insert_novel(app_handle: &tauri::AppHandle, novel_data: &NovelData) -> Result<i64> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "INSERT INTO novels (title, author, file_path, cover_image, cover_image_path, created_at, updated_at)
@@ -47,7 +47,7 @@ pub fn insert_novel(app_handle: &tauri::AppHandle, novel_data: &NovelData) -> Re
 
 /// 插入章节到数据库
 pub fn insert_chapter(app_handle: &tauri::AppHandle, chapter_data: &ChapterData) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "INSERT INTO chapters (novel_id, chapter_index, title, content, audio_path, tts_generated, created_at, updated_at)
@@ -66,7 +66,10 @@ pub fn insert_chapter(app_handle: &tauri::AppHandle, chapter_data: &ChapterData)
 }
 
 /// 批量插入章节
-pub fn insert_chapters_batch(app_handle: &tauri::AppHandle, chapters: &[ChapterData]) -> Result<()> {
+pub fn insert_chapters_batch(
+    app_handle: &tauri::AppHandle,
+    chapters: &[ChapterData],
+) -> Result<()> {
     let mut conn = db_start::get_database_connection(app_handle)?;
 
     // 开始事务
@@ -92,8 +95,11 @@ pub fn insert_chapters_batch(app_handle: &tauri::AppHandle, chapters: &[ChapterD
 }
 
 /// 根据文件路径查找小说ID
-pub fn find_novel_by_file_path(app_handle: &tauri::AppHandle, file_path: &PathBuf) -> Result<Option<i64>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn find_novel_by_file_path(
+    app_handle: &tauri::AppHandle,
+    file_path: &PathBuf,
+) -> Result<Option<i64>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare("SELECT id FROM novels WHERE file_path = ?1")?;
     let mut rows = stmt.query(params![file_path.to_string_lossy()])?;
@@ -106,12 +112,15 @@ pub fn find_novel_by_file_path(app_handle: &tauri::AppHandle, file_path: &PathBu
 }
 
 /// 获取小说所有章节
-pub fn get_chapters_by_novel_id(app_handle: &tauri::AppHandle, novel_id: i64) -> Result<Vec<ChapterData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_chapters_by_novel_id(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+) -> Result<Vec<ChapterData>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT novel_id, chapter_index, title, content, audio_path, tts_generated
-         FROM chapters WHERE novel_id = ?1 ORDER BY chapter_index"
+         FROM chapters WHERE novel_id = ?1 ORDER BY chapter_index",
     )?;
 
     let rows = stmt.query_map(params![novel_id], |row| {
@@ -134,12 +143,16 @@ pub fn get_chapters_by_novel_id(app_handle: &tauri::AppHandle, novel_id: i64) ->
 }
 
 /// 获取单章内容（根据 novel_id 和 chapter_index）
-pub fn get_chapter_by_index(app_handle: &tauri::AppHandle, novel_id: i64, chapter_index: i32) -> Result<Option<ChapterData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_chapter_by_index(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+    chapter_index: i32,
+) -> Result<Option<ChapterData>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT novel_id, chapter_index, title, content, audio_path, tts_generated
-         FROM chapters WHERE novel_id = ?1 AND chapter_index = ?2"
+         FROM chapters WHERE novel_id = ?1 AND chapter_index = ?2",
     )?;
 
     let mut rows = stmt.query_map(params![novel_id, chapter_index], |row| {
@@ -160,8 +173,12 @@ pub fn get_chapter_by_index(app_handle: &tauri::AppHandle, novel_id: i64, chapte
 }
 
 /// 更新章节的 TTS 生成状态
-pub fn update_chapter_tts_generated(app_handle: &tauri::AppHandle, chapter_id: i64, generated: bool) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn update_chapter_tts_generated(
+    app_handle: &tauri::AppHandle,
+    chapter_id: i64,
+    generated: bool,
+) -> Result<()> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "UPDATE chapters SET tts_generated = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
@@ -178,7 +195,7 @@ pub fn update_chapters_tts_generated_by_indices(
     chapter_indices: &[i32],
     generated: bool,
 ) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     if chapter_indices.is_empty() {
         return Ok(());
@@ -200,7 +217,8 @@ pub fn update_chapters_tts_generated_by_indices(
         param_values.push(Box::new(*idx));
     }
 
-    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
     stmt.execute(params_refs.as_slice())?;
 
     Ok(())
@@ -208,7 +226,7 @@ pub fn update_chapters_tts_generated_by_indices(
 
 /// 删除小说及其所有章节
 pub fn delete_novel(app_handle: &tauri::AppHandle, novel_id: i64) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     // 由于外键设置了 ON DELETE CASCADE，删除小说会自动删除相关章节
     conn.execute("DELETE FROM novels WHERE id = ?1", params![novel_id])?;
@@ -217,8 +235,13 @@ pub fn delete_novel(app_handle: &tauri::AppHandle, novel_id: i64) -> Result<()> 
 }
 
 /// 更新小说信息
-pub fn update_novel(app_handle: &tauri::AppHandle, novel_id: i64, title: &str, author: Option<&str>) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn update_novel(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+    title: &str,
+    author: Option<&str>,
+) -> Result<()> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "UPDATE novels SET title = ?1, author = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
@@ -230,7 +253,7 @@ pub fn update_novel(app_handle: &tauri::AppHandle, novel_id: i64, title: &str, a
 
 /// 获取所有小说
 pub fn get_all_novels(app_handle: &tauri::AppHandle) -> Result<Vec<NovelData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, title, author, file_path, cover_image, cover_image_path FROM novels ORDER BY created_at DESC"
@@ -257,7 +280,7 @@ pub fn get_all_novels(app_handle: &tauri::AppHandle) -> Result<Vec<NovelData>> {
 
 /// 根据ID获取小说
 pub fn get_novel_by_id(app_handle: &tauri::AppHandle, novel_id: i64) -> Result<Option<NovelData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, title, author, file_path, cover_image, cover_image_path FROM novels WHERE id = ?1"
@@ -293,8 +316,11 @@ pub struct IllustrationData {
 
 /// 插入插图到数据库
 /// 返回新插入插图的ID
-pub fn insert_illustration(app_handle: &tauri::AppHandle, illustration_data: &IllustrationData) -> Result<i64> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn insert_illustration(
+    app_handle: &tauri::AppHandle,
+    illustration_data: &IllustrationData,
+) -> Result<i64> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "INSERT INTO illustrations (novel_id, image_path, description, chapter_index, created_at)
@@ -311,7 +337,10 @@ pub fn insert_illustration(app_handle: &tauri::AppHandle, illustration_data: &Il
 }
 
 /// 批量插入插图
-pub fn insert_illustrations_batch(app_handle: &tauri::AppHandle, illustrations: &[IllustrationData]) -> Result<()> {
+pub fn insert_illustrations_batch(
+    app_handle: &tauri::AppHandle,
+    illustrations: &[IllustrationData],
+) -> Result<()> {
     let mut conn = db_start::get_database_connection(app_handle)?;
 
     // 开始事务
@@ -335,12 +364,15 @@ pub fn insert_illustrations_batch(app_handle: &tauri::AppHandle, illustrations: 
 }
 
 /// 根据小说ID获取所有插图
-pub fn get_illustrations_by_novel_id(app_handle: &tauri::AppHandle, novel_id: i64) -> Result<Vec<IllustrationData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_illustrations_by_novel_id(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+) -> Result<Vec<IllustrationData>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, novel_id, image_path, description, chapter_index
-         FROM illustrations WHERE novel_id = ?1 ORDER BY created_at"
+         FROM illustrations WHERE novel_id = ?1 ORDER BY created_at",
     )?;
 
     let rows = stmt.query_map(params![novel_id], |row| {
@@ -363,25 +395,38 @@ pub fn get_illustrations_by_novel_id(app_handle: &tauri::AppHandle, novel_id: i6
 
 /// 删除插图
 pub fn delete_illustration(app_handle: &tauri::AppHandle, illustration_id: i64) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
-    conn.execute("DELETE FROM illustrations WHERE id = ?1", params![illustration_id])?;
+    conn.execute(
+        "DELETE FROM illustrations WHERE id = ?1",
+        params![illustration_id],
+    )?;
 
     Ok(())
 }
 
 /// 根据小说ID删除所有插图
-pub fn delete_illustrations_by_novel_id(app_handle: &tauri::AppHandle, novel_id: i64) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn delete_illustrations_by_novel_id(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+) -> Result<()> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
-    conn.execute("DELETE FROM illustrations WHERE novel_id = ?1", params![novel_id])?;
+    conn.execute(
+        "DELETE FROM illustrations WHERE novel_id = ?1",
+        params![novel_id],
+    )?;
 
     Ok(())
 }
 
 /// 更新插图描述
-pub fn update_illustration_description(app_handle: &tauri::AppHandle, illustration_id: i64, description: Option<&str>) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn update_illustration_description(
+    app_handle: &tauri::AppHandle,
+    illustration_id: i64,
+    description: Option<&str>,
+) -> Result<()> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "UPDATE illustrations SET description = ?1 WHERE id = ?2",
@@ -392,8 +437,12 @@ pub fn update_illustration_description(app_handle: &tauri::AppHandle, illustrati
 }
 
 /// 更新小说封面图片路径
-pub fn update_novel_cover_image_path(app_handle: &tauri::AppHandle, novel_id: i64, cover_image_path: Option<&str>) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn update_novel_cover_image_path(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+    cover_image_path: Option<&str>,
+) -> Result<()> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "UPDATE novels SET cover_image_path = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
@@ -418,7 +467,7 @@ pub struct DialogueData {
 /// 插入角色对话
 /// 返回新插入对话的ID
 pub fn insert_dialogue(app_handle: &tauri::AppHandle, dialogue_data: &DialogueData) -> Result<i64> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "INSERT INTO dialogues (novel_id, chapter_index, dialogue_index, character_name, content, audio_path, created_at)
@@ -437,7 +486,10 @@ pub fn insert_dialogue(app_handle: &tauri::AppHandle, dialogue_data: &DialogueDa
 }
 
 /// 批量插入角色对话
-pub fn insert_dialogues_batch(app_handle: &tauri::AppHandle, dialogues: &[DialogueData]) -> Result<()> {
+pub fn insert_dialogues_batch(
+    app_handle: &tauri::AppHandle,
+    dialogues: &[DialogueData],
+) -> Result<()> {
     let mut conn = db_start::get_database_connection(app_handle)?;
 
     let tx = conn.transaction()?;
@@ -462,12 +514,16 @@ pub fn insert_dialogues_batch(app_handle: &tauri::AppHandle, dialogues: &[Dialog
 }
 
 /// 根据小说ID和章节索引获取所有角色对话
-pub fn get_dialogues_by_chapter(app_handle: &tauri::AppHandle, novel_id: i64, chapter_index: i32) -> Result<Vec<DialogueData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_dialogues_by_chapter(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+    chapter_index: i32,
+) -> Result<Vec<DialogueData>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, novel_id, chapter_index, dialogue_index, character_name, content, audio_path
-         FROM dialogues WHERE novel_id = ?1 AND chapter_index = ?2 ORDER BY dialogue_index"
+         FROM dialogues WHERE novel_id = ?1 AND chapter_index = ?2 ORDER BY dialogue_index",
     )?;
 
     let rows = stmt.query_map(params![novel_id, chapter_index], |row| {
@@ -491,12 +547,15 @@ pub fn get_dialogues_by_chapter(app_handle: &tauri::AppHandle, novel_id: i64, ch
 }
 
 /// 根据小说ID获取所有角色对话
-pub fn get_dialogues_by_novel_id(app_handle: &tauri::AppHandle, novel_id: i64) -> Result<Vec<DialogueData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_dialogues_by_novel_id(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+) -> Result<Vec<DialogueData>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, novel_id, chapter_index, dialogue_index, character_name, content, audio_path
-         FROM dialogues WHERE novel_id = ?1 ORDER BY chapter_index, dialogue_index"
+         FROM dialogues WHERE novel_id = ?1 ORDER BY chapter_index, dialogue_index",
     )?;
 
     let rows = stmt.query_map(params![novel_id], |row| {
@@ -521,7 +580,7 @@ pub fn get_dialogues_by_novel_id(app_handle: &tauri::AppHandle, novel_id: i64) -
 
 /// 删除角色对话
 pub fn delete_dialogue(app_handle: &tauri::AppHandle, dialogue_id: i64) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute("DELETE FROM dialogues WHERE id = ?1", params![dialogue_id])?;
 
@@ -530,16 +589,23 @@ pub fn delete_dialogue(app_handle: &tauri::AppHandle, dialogue_id: i64) -> Resul
 
 /// 根据小说ID删除所有角色对话
 pub fn delete_dialogues_by_novel_id(app_handle: &tauri::AppHandle, novel_id: i64) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
-    conn.execute("DELETE FROM dialogues WHERE novel_id = ?1", params![novel_id])?;
+    conn.execute(
+        "DELETE FROM dialogues WHERE novel_id = ?1",
+        params![novel_id],
+    )?;
 
     Ok(())
 }
 
 /// 更新角色对话音频路径
-pub fn update_dialogue_audio_path(app_handle: &tauri::AppHandle, dialogue_id: i64, audio_path: Option<&str>) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn update_dialogue_audio_path(
+    app_handle: &tauri::AppHandle,
+    dialogue_id: i64,
+    audio_path: Option<&str>,
+) -> Result<()> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "UPDATE dialogues SET audio_path = ?1 WHERE id = ?2",
@@ -566,7 +632,7 @@ pub struct ApiKeyData {
 
 /// 插入大模型密钥
 pub fn insert_api_key(app_handle: &tauri::AppHandle, key_data: &ApiKeyData) -> Result<i64> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     // 如果设置为活跃，先取消其他所有密钥的活跃状态
     if key_data.is_active {
@@ -590,11 +656,11 @@ pub fn insert_api_key(app_handle: &tauri::AppHandle, key_data: &ApiKeyData) -> R
 
 /// 获取所有大模型密钥
 pub fn get_all_api_keys(app_handle: &tauri::AppHandle) -> Result<Vec<ApiKeyData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, provider, api_key, base_url, model, is_active
-         FROM api_keys ORDER BY created_at DESC"
+         FROM api_keys ORDER BY created_at DESC",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -617,11 +683,11 @@ pub fn get_all_api_keys(app_handle: &tauri::AppHandle) -> Result<Vec<ApiKeyData>
 
 /// 获取当前活跃的大模型密钥
 pub fn get_active_api_key(app_handle: &tauri::AppHandle) -> Result<Option<ApiKeyData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, provider, api_key, base_url, model, is_active
-         FROM api_keys WHERE is_active = 1 LIMIT 1"
+         FROM api_keys WHERE is_active = 1 LIMIT 1",
     )?;
 
     let mut rows = stmt.query_map([], |row| {
@@ -643,8 +709,12 @@ pub fn get_active_api_key(app_handle: &tauri::AppHandle) -> Result<Option<ApiKey
 }
 
 /// 更新大模型密钥
-pub fn update_api_key(app_handle: &tauri::AppHandle, key_id: i64, key_data: &ApiKeyData) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn update_api_key(
+    app_handle: &tauri::AppHandle,
+    key_id: i64,
+    key_data: &ApiKeyData,
+) -> Result<()> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     // 如果设置为活跃，先取消其他所有密钥的活跃状态
     if key_data.is_active {
@@ -669,14 +739,17 @@ pub fn update_api_key(app_handle: &tauri::AppHandle, key_id: i64, key_data: &Api
 
 /// 删除大模型密钥
 pub fn delete_api_key(app_handle: &tauri::AppHandle, key_id: i64) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
     conn.execute("DELETE FROM api_keys WHERE id = ?1", params![key_id])?;
     Ok(())
 }
 
 /// 获取指定章节ID的完整内容
-pub fn get_chapters_content_by_ids(app_handle: &tauri::AppHandle, chapter_ids: &[i32]) -> Result<Vec<(i32, String, String)>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_chapters_content_by_ids(
+    app_handle: &tauri::AppHandle,
+    chapter_ids: &[i32],
+) -> Result<Vec<(i32, String, String)>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     if chapter_ids.is_empty() {
         return Ok(Vec::new());
@@ -713,8 +786,13 @@ pub fn get_chapters_content_by_ids(app_handle: &tauri::AppHandle, chapter_ids: &
 }
 
 /// 更新角色对话角色名或内容
-pub fn update_dialogue_content(app_handle: &tauri::AppHandle, dialogue_id: i64, character_name: Option<&str>, content: Option<&str>) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn update_dialogue_content(
+    app_handle: &tauri::AppHandle,
+    dialogue_id: i64,
+    character_name: Option<&str>,
+    content: Option<&str>,
+) -> Result<()> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut sql = String::from("UPDATE dialogues SET ");
     let mut set_clauses: Vec<String> = Vec::new();
@@ -737,7 +815,10 @@ pub fn update_dialogue_content(app_handle: &tauri::AppHandle, dialogue_id: i64, 
     sql.push_str(" WHERE id = ?");
     param_values.push(Box::new(dialogue_id));
 
-    conn.execute(&sql, rusqlite::params_from_iter(param_values.iter().map(|p| p.as_ref())))?;
+    conn.execute(
+        &sql,
+        rusqlite::params_from_iter(param_values.iter().map(|p| p.as_ref())),
+    )?;
 
     Ok(())
 }
@@ -761,7 +842,7 @@ pub struct TtsChunkData {
 
 /// 插入 TTS 分片记录，返回新记录的 id
 pub fn insert_tts_chunk(app_handle: &tauri::AppHandle, chunk: &TtsChunkData) -> Result<i64> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "INSERT INTO tts_chunks (novel_id, chapter_id, chunk_index, system_prompt, user_content, raw_request, raw_response, created_at)
@@ -798,7 +879,10 @@ pub struct TtsSceneData {
 }
 
 /// 批量插入 TTS 剧本场景
-pub fn insert_tts_scenes_batch(app_handle: &tauri::AppHandle, scenes: &[TtsSceneData]) -> Result<()> {
+pub fn insert_tts_scenes_batch(
+    app_handle: &tauri::AppHandle,
+    scenes: &[TtsSceneData],
+) -> Result<()> {
     let mut conn = db_start::get_database_connection(app_handle)?;
 
     let tx = conn.transaction()?;
@@ -829,8 +913,11 @@ pub fn insert_tts_scenes_batch(app_handle: &tauri::AppHandle, scenes: &[TtsScene
 }
 
 /// 查询 TTS 剧本（按小说ID）
-pub fn get_tts_scripts_by_novel(app_handle: &tauri::AppHandle, novel_id: i64) -> Result<Vec<TtsSceneData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_tts_scripts_by_novel(
+    app_handle: &tauri::AppHandle,
+    novel_id: i64,
+) -> Result<Vec<TtsSceneData>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT chunk_id, novel_id, chapter_id, chunk_index, scene_index, scene_type, content, character_name, emotion, speed, pitch, pause_duration
@@ -862,8 +949,11 @@ pub fn get_tts_scripts_by_novel(app_handle: &tauri::AppHandle, novel_id: i64) ->
 }
 
 /// 查询指定章节的 TTS 剧本
-pub fn get_tts_scripts_by_chapter(app_handle: &tauri::AppHandle, chapter_id: i64) -> Result<Vec<TtsSceneData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_tts_scripts_by_chapter(
+    app_handle: &tauri::AppHandle,
+    chapter_id: i64,
+) -> Result<Vec<TtsSceneData>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT chunk_id, novel_id, chapter_id, chunk_index, scene_index, scene_type, content, character_name, emotion, speed, pitch, pause_duration
@@ -906,8 +996,11 @@ pub struct ChapterTtsSummary {
 }
 
 /// 查询指定章节的 TTS 摘要（角色列表、场景数等）
-pub fn get_chapter_tts_summary(app_handle: &tauri::AppHandle, chapter_id: i64) -> Result<ChapterTtsSummary> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_chapter_tts_summary(
+    app_handle: &tauri::AppHandle,
+    chapter_id: i64,
+) -> Result<ChapterTtsSummary> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     // 统计
     let (scene_count, dialogue_count, total_text_length): (i64, i64, i64) = conn.query_row(
@@ -923,11 +1016,12 @@ pub fn get_chapter_tts_summary(app_handle: &tauri::AppHandle, chapter_id: i64) -
     let mut stmt = conn.prepare(
         "SELECT DISTINCT character_name FROM tts_scripts
          WHERE chapter_id = ?1 AND character_name IS NOT NULL AND character_name != ''
-         ORDER BY character_name"
+         ORDER BY character_name",
     )?;
-    let characters: Vec<String> = stmt.query_map(params![chapter_id], |row| {
-        row.get::<_, String>(0)
-    })?.filter_map(|r| r.ok()).collect();
+    let characters: Vec<String> = stmt
+        .query_map(params![chapter_id], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
 
     Ok(ChapterTtsSummary {
         chapter_id,
@@ -944,8 +1038,11 @@ pub fn get_chapter_tts_summary(app_handle: &tauri::AppHandle, chapter_id: i64) -
 
 /// 获取指定章节的完整信息（含 novel_id 和 chapter_id）
 /// 返回 (chapter_index, title, content, novel_id, chapter_id)
-pub fn get_chapters_full_info_by_ids(app_handle: &tauri::AppHandle, chapter_ids: &[i32]) -> Result<Vec<(i32, String, String, i64, i64)>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_chapters_full_info_by_ids(
+    app_handle: &tauri::AppHandle,
+    chapter_ids: &[i32],
+) -> Result<Vec<(i32, String, String, i64, i64)>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     if chapter_ids.is_empty() {
         return Ok(Vec::new());
@@ -1007,7 +1104,7 @@ pub fn insert_character_voice(
     app_handle: &tauri::AppHandle,
     data: &CharacterVoiceData,
 ) -> Result<i64> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "INSERT INTO character_voices (character_name, ref_audio_path, prompt_text, prompt_lang, text_lang, gpt_model, sovits_model, api_base_url, config_path, created_at, updated_at)
@@ -1029,10 +1126,8 @@ pub fn insert_character_voice(
 }
 
 /// 获取所有角色语音配置
-pub fn get_all_character_voices(
-    app_handle: &tauri::AppHandle,
-) -> Result<Vec<CharacterVoiceData>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+pub fn get_all_character_voices(app_handle: &tauri::AppHandle) -> Result<Vec<CharacterVoiceData>> {
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, character_name, ref_audio_path, prompt_text, prompt_lang, text_lang, gpt_model, sovits_model, api_base_url, config_path
@@ -1118,10 +1213,7 @@ pub fn get_character_voice_by_id(
 }
 
 /// 删除角色语音配置
-pub fn delete_character_voice(
-    app_handle: &tauri::AppHandle,
-    id: i64,
-) -> Result<()> {
+pub fn delete_character_voice(app_handle: &tauri::AppHandle, id: i64) -> Result<()> {
     let conn = db_start::get_database_connection(app_handle)?;
     conn.execute("DELETE FROM character_voices WHERE id = ?1", params![id])?;
     Ok(())
@@ -1141,7 +1233,9 @@ pub struct TtsGeneratedChapter {
 }
 
 /// 查询所有已生成 TTS 剧本的章节
-pub fn get_tts_generated_chapters(app_handle: &tauri::AppHandle) -> Result<Vec<TtsGeneratedChapter>> {
+pub fn get_tts_generated_chapters(
+    app_handle: &tauri::AppHandle,
+) -> Result<Vec<TtsGeneratedChapter>> {
     let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
@@ -1151,7 +1245,7 @@ pub fn get_tts_generated_chapters(app_handle: &tauri::AppHandle) -> Result<Vec<T
          FROM chapters c
          JOIN novels n ON c.novel_id = n.id
          WHERE c.tts_generated = 1
-         ORDER BY n.title, c.chapter_index"
+         ORDER BY n.title, c.chapter_index",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -1200,7 +1294,9 @@ pub struct ChapterWithNovel {
 }
 
 /// 查询所有章节（含小说信息），按小说分组、章节排序
-pub fn get_all_chapters_grouped_by_novel(app_handle: &tauri::AppHandle) -> Result<Vec<ChapterWithNovel>> {
+pub fn get_all_chapters_grouped_by_novel(
+    app_handle: &tauri::AppHandle,
+) -> Result<Vec<ChapterWithNovel>> {
     let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
@@ -1209,7 +1305,7 @@ pub fn get_all_chapters_grouped_by_novel(app_handle: &tauri::AppHandle) -> Resul
                 (SELECT COUNT(*) FROM tts_scripts WHERE chapter_id = c.id) AS scene_count
          FROM chapters c
          JOIN novels n ON c.novel_id = n.id
-         ORDER BY n.title, c.chapter_index"
+         ORDER BY n.title, c.chapter_index",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -1237,12 +1333,12 @@ pub fn get_character_voice_mappings_for_chapter(
     app_handle: &tauri::AppHandle,
     chapter_id: i64,
 ) -> Result<Vec<ChapterCharacterVoiceMap>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, chapter_id, character_name, voice_id
          FROM chapter_character_voice_map WHERE chapter_id = ?1
-         ORDER BY character_name"
+         ORDER BY character_name",
     )?;
 
     let rows = stmt.query_map(params![chapter_id], |row| {
@@ -1309,7 +1405,7 @@ pub fn get_tts_scenes_with_id_by_chapter(
     app_handle: &tauri::AppHandle,
     chapter_id: i64,
 ) -> Result<Vec<TtsSceneWithId>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     let mut stmt = conn.prepare(
         "SELECT id, novel_id, chapter_id, scene_index, character_name, content, emotion, speed, pitch
@@ -1344,7 +1440,7 @@ pub fn update_tts_script_audio_path(
     script_id: i64,
     audio_path: Option<&str>,
 ) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "UPDATE tts_scripts SET audio_path = ?1 WHERE id = ?2",
@@ -1360,7 +1456,7 @@ pub fn update_chapter_audio_path(
     chapter_id: i64,
     audio_path: Option<&str>,
 ) -> Result<()> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     conn.execute(
         "UPDATE chapters SET audio_path = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
@@ -1377,7 +1473,7 @@ pub fn get_chapters_by_novel_and_indices(
     novel_id: i64,
     chapter_indices: &[i32],
 ) -> Result<Vec<(i32, String, String, i64, i64)>> {
-    let mut conn = db_start::get_database_connection(app_handle)?;
+    let conn = db_start::get_database_connection(app_handle)?;
 
     if chapter_indices.is_empty() {
         return Ok(Vec::new());
@@ -1399,7 +1495,8 @@ pub fn get_chapters_by_novel_and_indices(
         param_values.push(Box::new(*idx));
     }
 
-    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
     let rows = stmt.query_map(params_refs.as_slice(), |row| {
         Ok((
             row.get::<_, i32>(0)?,
@@ -1473,7 +1570,7 @@ pub fn get_novels_with_audio(app_handle: &tauri::AppHandle) -> Result<Vec<NovelW
          JOIN chapters c ON c.novel_id = n.id
          WHERE c.tts_generated = 1 AND c.audio_path IS NOT NULL AND c.audio_path != ''
          GROUP BY n.id
-         ORDER BY n.title"
+         ORDER BY n.title",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(NovelWithAudioInfo {
@@ -1533,7 +1630,7 @@ pub fn get_tts_scenes_with_audio_by_chapter(
                 character_name, emotion, speed, pause_duration, audio_path
          FROM tts_scripts WHERE chapter_id = ?1
            AND audio_path IS NOT NULL AND audio_path != ''
-         ORDER BY chunk_index, scene_index"
+         ORDER BY chunk_index, scene_index",
     )?;
     let rows = stmt.query_map(params![chapter_id], |row| {
         Ok(TtsSceneWithAudio {

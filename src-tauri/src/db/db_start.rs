@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use rusqlite::{Connection, Result};
+use std::path::PathBuf;
 use tauri::Manager;
 
 /// 获取数据库文件路径
@@ -27,7 +27,7 @@ pub fn get_database_connection(app_handle: &tauri::AppHandle) -> Result<Connecti
 }
 
 pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<()> {
-    let  conn = get_database_connection(app_handle)?;
+    let conn = get_database_connection(app_handle)?;
 
     // 创建 novels 表
     conn.execute(
@@ -43,7 +43,6 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<()> {
         )",
         [],
     )?;
-
 
     // 创建 chapters 表
     conn.execute(
@@ -207,10 +206,7 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<()> {
     }
 
     // 迁移：为旧 tts_scripts 表添加 audio_path 列
-    match conn.execute(
-        "ALTER TABLE tts_scripts ADD COLUMN audio_path TEXT",
-        [],
-    ) {
+    match conn.execute("ALTER TABLE tts_scripts ADD COLUMN audio_path TEXT", []) {
         Ok(_) => println!("[dbStart] 迁移：已添加 audio_path 列到 tts_scripts"),
         Err(e) => println!("[dbStart] 迁移：tts_scripts.audio_path 列已存在 ({})", e),
     }

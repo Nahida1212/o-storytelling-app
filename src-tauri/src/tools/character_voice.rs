@@ -1,6 +1,6 @@
+use crate::db::db_service::{self, CharacterVoiceData};
 use std::fs;
 use tauri::{AppHandle, Manager};
-use crate::db::db_service::{self, CharacterVoiceData};
 
 fn generate_tts_config(app: &AppHandle, voice: &CharacterVoiceData) -> Result<String, String> {
     let config_dir = app
@@ -40,17 +40,12 @@ fn generate_tts_config(app: &AppHandle, voice: &CharacterVoiceData) -> Result<St
 }
 
 #[tauri::command]
-pub fn get_all_character_voices(
-    app: AppHandle,
-) -> Result<Vec<CharacterVoiceData>, String> {
+pub fn get_all_character_voices(app: AppHandle) -> Result<Vec<CharacterVoiceData>, String> {
     db_service::get_all_character_voices(&app).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn create_character_voice(
-    app: AppHandle,
-    data: CharacterVoiceData,
-) -> Result<i64, String> {
+pub fn create_character_voice(app: AppHandle, data: CharacterVoiceData) -> Result<i64, String> {
     let config_path = generate_tts_config(&app, &data)?;
     let mut data = data;
     data.config_path = Some(config_path);
@@ -70,10 +65,7 @@ pub fn update_character_voice(
 }
 
 #[tauri::command]
-pub fn delete_character_voice(
-    app: AppHandle,
-    id: i64,
-) -> Result<(), String> {
+pub fn delete_character_voice(app: AppHandle, id: i64) -> Result<(), String> {
     // 先查角色名，用于删除对应的 yaml 配置文件
     let voice = db_service::get_character_voice_by_id(&app, id).map_err(|e| e.to_string())?;
 

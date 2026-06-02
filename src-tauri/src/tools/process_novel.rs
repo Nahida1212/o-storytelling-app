@@ -104,9 +104,9 @@ pub struct ProcessedChapter {
 /// 处理后的插图数据，用于保存到数据库
 #[derive(Debug)]
 pub struct ProcessedIllustration {
-    pub resource_name: String, // 资源名称（如 "cover.jpg"）
-    pub mime_type: String,     // MIME类型（如 "image/jpeg"）
-    pub data: Vec<u8>,         // 图片数据
+    pub resource_name: String,      // 资源名称（如 "cover.jpg"）
+    pub mime_type: String,          // MIME类型（如 "image/jpeg"）
+    pub data: Vec<u8>,              // 图片数据
     pub chapter_index: Option<i32>, // 关联的章节索引（如果有）
 }
 
@@ -121,14 +121,17 @@ pub struct ProcessNovelResult {
 pub fn process_novel(path: &PathBuf) -> Result<ProcessNovelResult, String> {
     println!("进入process novel函数，路径: {}", path.to_string_lossy());
     // 打开 epub 文件
-    let mut epub_doc: epub::doc::EpubDoc<std::io::BufReader<std::fs::File>> = epub::doc::EpubDoc::new(path)
-        .map_err(|e| format!("Failed to open epub file: {:?}", e))?;
+    let mut epub_doc: epub::doc::EpubDoc<std::io::BufReader<std::fs::File>> =
+        epub::doc::EpubDoc::new(path).map_err(|e| format!("Failed to open epub file: {:?}", e))?;
 
     // 读取元数据
     println!("========== EPUB 元数据 ==========");
 
     // 提取元数据
-    let title = epub_doc.mdata("title").map(|m| m.value.clone()).unwrap_or_default();
+    let title = epub_doc
+        .mdata("title")
+        .map(|m| m.value.clone())
+        .unwrap_or_default();
     let author = epub_doc.mdata("creator").map(|m| m.value.clone());
     let publisher = epub_doc.mdata("publisher").map(|m| m.value.clone());
     let introduction = epub_doc.mdata("description").map(|m| m.value.clone());
@@ -142,14 +145,19 @@ pub fn process_novel(path: &PathBuf) -> Result<ProcessNovelResult, String> {
     // 获取所有元数据
     println!("\n---------- 所有元数据字段 ----------");
     for item in epub_doc.metadata.iter() {
-        println!("{}: {} (lang: {:?}, refined: {:?})", item.property, item.value, item.lang, item.refined);
+        println!(
+            "{}: {} (lang: {:?}, refined: {:?})",
+            item.property, item.value, item.lang, item.refined
+        );
     }
 
     // 提取插图资源
     println!("\n========== 提取插图 ==========");
     let mut illustrations = Vec::new();
     // 首先收集所有图片资源的名称
-    let image_names: Vec<String> = epub_doc.resources.keys()
+    let image_names: Vec<String> = epub_doc
+        .resources
+        .keys()
         .filter(|name| {
             let mime_type = epub_doc.get_resource_mime(name).unwrap_or_default();
             mime_type.starts_with("image/")
@@ -162,7 +170,12 @@ pub fn process_novel(path: &PathBuf) -> Result<ProcessNovelResult, String> {
     for name in image_names {
         let mime_type = epub_doc.get_resource_mime(&name).unwrap_or_default();
         if let Some((data, _actual_mime)) = epub_doc.get_resource(&name) {
-            println!("提取插图: {} ({}), 大小: {} 字节", name, mime_type, data.len());
+            println!(
+                "提取插图: {} ({}), 大小: {} 字节",
+                name,
+                mime_type,
+                data.len()
+            );
             illustrations.push(ProcessedIllustration {
                 resource_name: name.clone(),
                 mime_type: mime_type.clone(),
@@ -181,7 +194,9 @@ pub fn process_novel(path: &PathBuf) -> Result<ProcessNovelResult, String> {
     let total_spine = epub_doc.spine.len();
 
     // 先收集所有 spine idref 和 properties
-    let spine_items: Vec<(String, Option<String>)> = epub_doc.spine.iter()
+    let spine_items: Vec<(String, Option<String>)> = epub_doc
+        .spine
+        .iter()
         .map(|item| (item.idref.clone(), item.properties.clone()))
         .collect();
 
@@ -210,7 +225,10 @@ pub fn process_novel(path: &PathBuf) -> Result<ProcessNovelResult, String> {
 
             // 分析 HTML 结构
             let (a_count, has_img, text_length) = analyze_html_structure(&content);
-            println!("结构分析: <a>标签数={}, 有图片={}, 文本长度={}", a_count, has_img, text_length);
+            println!(
+                "结构分析: <a>标签数={}, 有图片={}, 文本长度={}",
+                a_count, has_img, text_length
+            );
 
             // 提取 body class
             let body_class = extract_body_class(&content);
@@ -227,7 +245,7 @@ pub fn process_novel(path: &PathBuf) -> Result<ProcessNovelResult, String> {
                 properties,
                 a_count,
                 has_img,
-                &body_class
+                &body_class,
             );
             println!("章节类型: {:?}", chapter_type);
 
@@ -250,7 +268,9 @@ pub fn process_novel(path: &PathBuf) -> Result<ProcessNovelResult, String> {
 
             // 只保存正文章节、前言和结语，跳过封面、目录等非内容章节
             let should_save = match chapter_type {
-                ChapterType::ChapterBody | ChapterType::FrontMatter | ChapterType::BackMatter => true,
+                ChapterType::ChapterBody | ChapterType::FrontMatter | ChapterType::BackMatter => {
+                    true
+                }
                 _ => false,
             };
 
@@ -371,7 +391,8 @@ fn extract_body_class(html: &str) -> String {
                 let value_part = &after_class[value_start..];
 
                 // 找到属性值结束位置
-                let value_end = value_part.find(|c: char| c == '"' || c == '\'' || c == ' ' || c == '\t' || c == '\n');
+                let value_end = value_part
+                    .find(|c: char| c == '"' || c == '\'' || c == ' ' || c == '\t' || c == '\n');
 
                 if let Some(end_pos) = value_end {
                     return value_part[..end_pos].to_string();
@@ -397,16 +418,31 @@ fn extract_chapter_title(html: &str) -> String {
     if !first_line.is_empty() && first_line.len() < 200 {
         // 规则2: 检查是否包含常见的章节标识符
         let line_lower = first_line.to_lowercase();
-        let has_chapter_marker = line_lower.contains("第") && (line_lower.contains("章") || line_lower.contains("节") || line_lower.contains("回")) ||
-                                line_lower.contains("chapter") || line_lower.contains("section") ||
-                                line_lower.contains("part") || line_lower.contains("episode");
+        let has_chapter_marker = line_lower.contains("第")
+            && (line_lower.contains("章")
+                || line_lower.contains("节")
+                || line_lower.contains("回"))
+            || line_lower.contains("chapter")
+            || line_lower.contains("section")
+            || line_lower.contains("part")
+            || line_lower.contains("episode");
 
         // 规则3: 检查是否以数字开头（如 "1. " 或 "第1章"）
-        let starts_with_number = first_line.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
+        let starts_with_number = first_line
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false);
 
         // 规则4: 检查是否包含数字加点格式（如 "1. 标题"）
-        let has_number_dot_format = first_line.contains('.') &&
-                                   first_line.split('.').next().unwrap_or("").trim().chars().all(|c| c.is_ascii_digit());
+        let has_number_dot_format = first_line.contains('.')
+            && first_line
+                .split('.')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .chars()
+                .all(|c| c.is_ascii_digit());
 
         // 如果满足任何章节标题的特征，使用第一行作为标题
         if has_chapter_marker || starts_with_number || has_number_dot_format {
@@ -515,7 +551,8 @@ fn extract_epub_type(html: &str) -> String {
                     // 跳过空格和等号
                     let mut value_start = 0;
                     for (i, c) in after_type.chars().enumerate() {
-                        if c == '"' || c == '\'' || (c != ' ' && c != '=' && c != '\t' && c != '\n') {
+                        if c == '"' || c == '\'' || (c != ' ' && c != '=' && c != '\t' && c != '\n')
+                        {
                             value_start = i;
                             break;
                         }
@@ -524,7 +561,9 @@ fn extract_epub_type(html: &str) -> String {
                     let value_part = &after_type[value_start..];
 
                     // 找到属性值结束位置
-                    let value_end = value_part.find(|c: char| c == '"' || c == '\'' || c == ' ' || c == '\t' || c == '\n');
+                    let value_end = value_part.find(|c: char| {
+                        c == '"' || c == '\'' || c == ' ' || c == '\t' || c == '\n'
+                    });
 
                     if let Some(end_pos) = value_end {
                         return value_part[..end_pos].to_string();
@@ -554,10 +593,12 @@ fn classify_chapter_type(
     _spine_properties: &Option<String>,
     _a_count: usize,
     _has_img: bool,
-    _body_class: &str
+    _body_class: &str,
 ) -> ChapterType {
-    println!("分类函数调用: spine_id='{}', epub_type='{}', title='{}', text_length={}",
-             spine_id, epub_type, title, text_length);
+    println!(
+        "分类函数调用: spine_id='{}', epub_type='{}', title='{}', text_length={}",
+        spine_id, epub_type, title, text_length
+    );
 
     // ===== 第一优先：epub:type =====
     let epub_type_lower = epub_type.to_lowercase();
@@ -575,16 +616,24 @@ fn classify_chapter_type(
             println!("  基于epub_type分类为: Toc (包含'toc'或'nav')");
             return ChapterType::Toc;
         }
-        if epub_type_lower.contains("frontmatter") || epub_type_lower.contains("dedication")
-            || epub_type_lower.contains("foreword") || epub_type_lower.contains("preface")
-            || epub_type_lower.contains("acknowledgments") || epub_type_lower.contains("prologue") {
+        if epub_type_lower.contains("frontmatter")
+            || epub_type_lower.contains("dedication")
+            || epub_type_lower.contains("foreword")
+            || epub_type_lower.contains("preface")
+            || epub_type_lower.contains("acknowledgments")
+            || epub_type_lower.contains("prologue")
+        {
             println!("  基于epub_type分类为: FrontMatter (包含相关关键词)");
             return ChapterType::FrontMatter;
         }
-        if epub_type_lower.contains("backmatter") || epub_type_lower.contains("afterword")
-            || epub_type_lower.contains("appendix") || epub_type_lower.contains("glossary")
-            || epub_type_lower.contains("index") || epub_type_lower.contains("colophon")
-            || epub_type_lower.contains("epilogue") {
+        if epub_type_lower.contains("backmatter")
+            || epub_type_lower.contains("afterword")
+            || epub_type_lower.contains("appendix")
+            || epub_type_lower.contains("glossary")
+            || epub_type_lower.contains("index")
+            || epub_type_lower.contains("colophon")
+            || epub_type_lower.contains("epilogue")
+        {
             println!("  基于epub_type分类为: BackMatter (包含相关关键词)");
             return ChapterType::BackMatter;
         }
@@ -617,31 +666,47 @@ fn classify_chapter_type(
     }
 
     // 3. 检查目录
-    if spine_id_lower.contains("toc") || spine_id_lower.contains("contents") || spine_id_lower.contains("nav") {
+    if spine_id_lower.contains("toc")
+        || spine_id_lower.contains("contents")
+        || spine_id_lower.contains("nav")
+    {
         println!("  基于spine_id分类为: Toc (包含'toc', 'contents'或'nav')");
         return ChapterType::Toc;
     }
 
     // 4. 检查版权页
-    if spine_id_lower.contains("copyright") || spine_id_lower.contains("colophon") || spine_id_lower.contains("rights") {
+    if spine_id_lower.contains("copyright")
+        || spine_id_lower.contains("colophon")
+        || spine_id_lower.contains("rights")
+    {
         println!("  基于spine_id分类为: Copyright (包含'copyright', 'colophon'或'rights')");
         return ChapterType::Copyright;
     }
 
     // 5. 检查前言/序言 (FrontMatter)
-    if spine_id_lower.contains("frontmatter") || spine_id_lower.contains("fmatter")
-        || spine_id_lower.contains("preface") || spine_id_lower.contains("foreword")
-        || spine_id_lower.contains("prologue") || spine_id_lower.contains("dedication")
-        || spine_id_lower.contains("acknowledgment") || spine_id_lower.contains("intro") {
+    if spine_id_lower.contains("frontmatter")
+        || spine_id_lower.contains("fmatter")
+        || spine_id_lower.contains("preface")
+        || spine_id_lower.contains("foreword")
+        || spine_id_lower.contains("prologue")
+        || spine_id_lower.contains("dedication")
+        || spine_id_lower.contains("acknowledgment")
+        || spine_id_lower.contains("intro")
+    {
         println!("  基于spine_id分类为: FrontMatter (包含相关关键词)");
         return ChapterType::FrontMatter;
     }
 
     // 6. 检查结语/后记 (BackMatter)
-    if spine_id_lower.contains("backmatter") || spine_id_lower.contains("epilogue")
-        || spine_id_lower.contains("afterword") || spine_id_lower.contains("appendix")
-        || spine_id_lower.contains("glossary") || spine_id_lower.contains("index")
-        || spine_id_lower == "backmatter" || spine_id_lower == "colophon" {
+    if spine_id_lower.contains("backmatter")
+        || spine_id_lower.contains("epilogue")
+        || spine_id_lower.contains("afterword")
+        || spine_id_lower.contains("appendix")
+        || spine_id_lower.contains("glossary")
+        || spine_id_lower.contains("index")
+        || spine_id_lower == "backmatter"
+        || spine_id_lower == "colophon"
+    {
         println!("  基于spine_id分类为: BackMatter (包含相关关键词或完全匹配)");
         return ChapterType::BackMatter;
     }
@@ -650,14 +715,25 @@ fn classify_chapter_type(
     // 模式1: "p-" 后跟数字 (如 "p-037", "p-5")
     if spine_id_lower.starts_with("p-") {
         let after_prefix = &spine_id_lower[2..]; // 去掉 "p-"
-        // 检查是否是纯数字
+                                                 // 检查是否是纯数字
         if after_prefix.chars().all(|c| c.is_ascii_digit()) {
-            println!("  基于spine_id分类为: ChapterBody (p-后跟纯数字: '{}')", after_prefix);
+            println!(
+                "  基于spine_id分类为: ChapterBody (p-后跟纯数字: '{}')",
+                after_prefix
+            );
             return ChapterType::ChapterBody;
         }
         // 或者检查是否以数字开头 (如 "p-5-something")
-        if after_prefix.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
-            println!("  基于spine_id分类为: ChapterBody (p-后以数字开头: '{}')", after_prefix);
+        if after_prefix
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
+            println!(
+                "  基于spine_id分类为: ChapterBody (p-后以数字开头: '{}')",
+                after_prefix
+            );
             return ChapterType::ChapterBody;
         }
     }
@@ -680,8 +756,16 @@ fn classify_chapter_type(
     // 模式4: 包含数字的文件名 (如 "037.xhtml", "005.html")
     if spine_id_lower.ends_with(".xhtml") || spine_id_lower.ends_with(".html") {
         let filename = spine_id_lower.split('/').last().unwrap_or(&spine_id_lower);
-        if filename.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
-            println!("  基于spine_id分类为: ChapterBody (数字开头的HTML文件: '{}')", filename);
+        if filename
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
+            println!(
+                "  基于spine_id分类为: ChapterBody (数字开头的HTML文件: '{}')",
+                filename
+            );
             return ChapterType::ChapterBody;
         }
     }
@@ -696,7 +780,11 @@ fn classify_chapter_type(
         }
         // 即使文本较少，但如果标题看起来像章节
         let title_lower = title.to_lowercase();
-        if title_lower.contains("第") || title_lower.contains("chapter") || title_lower.contains("节") || title_lower.contains("回") {
+        if title_lower.contains("第")
+            || title_lower.contains("chapter")
+            || title_lower.contains("节")
+            || title_lower.contains("回")
+        {
             println!("  基于小型EPUB特殊处理分类为: ChapterBody (标题包含章节关键词)");
             return ChapterType::ChapterBody;
         }

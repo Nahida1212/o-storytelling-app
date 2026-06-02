@@ -1,5 +1,5 @@
-use tauri::AppHandle;
 use crate::db::db_service;
+use tauri::AppHandle;
 
 /// 插图信息（用于前端显示）
 #[derive(serde::Serialize, tauri_ts_generator::TS)]
@@ -14,20 +14,21 @@ pub struct IllustrationInfo {
 
 /// 获取小说的所有插图
 #[tauri::command]
-pub fn get_illustrations_by_novel(app: AppHandle, novel_id: i64) -> Result<Vec<IllustrationInfo>, String> {
+pub fn get_illustrations_by_novel(
+    app: AppHandle,
+    novel_id: i64,
+) -> Result<Vec<IllustrationInfo>, String> {
     let illustrations = db_service::get_illustrations_by_novel_id(&app, novel_id)
         .map_err(|e| format!("Failed to get illustrations: {}", e))?;
 
     let illustration_infos: Vec<IllustrationInfo> = illustrations
         .into_iter()
-        .map(|illustration| {
-            IllustrationInfo {
-                id: illustration.id.unwrap_or(0),
-                novel_id: illustration.novel_id,
-                image_path: illustration.image_path,
-                description: illustration.description,
-                chapter_index: illustration.chapter_index,
-            }
+        .map(|illustration| IllustrationInfo {
+            id: illustration.id.unwrap_or(0),
+            novel_id: illustration.novel_id,
+            image_path: illustration.image_path,
+            description: illustration.description,
+            chapter_index: illustration.chapter_index,
         })
         .collect();
 

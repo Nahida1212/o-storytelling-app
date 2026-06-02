@@ -1,8 +1,8 @@
 use crate::db::db_service;
+use std::io::{Read, Write};
 use tauri::AppHandle;
 use tauri::Emitter;
 use tauri::Manager;
-use std::io::{Write, Read};
 
 /// 分片后的章节内容块
 #[derive(serde::Serialize, tauri_ts_generator::TS)]
@@ -74,7 +74,7 @@ pub struct ChapterCharacterAnalysis {
 /// 进度事件载荷，通过 Tauri event 发送到前端
 #[derive(serde::Serialize, Clone)]
 pub struct TtsGenerationProgress {
-    pub phase: String,       // "start" | "processing" | "complete" | "error"
+    pub phase: String, // "start" | "processing" | "complete" | "error"
     pub total_chunks: usize,
     pub processed_chunks: usize,
     pub message: String,
@@ -161,7 +161,11 @@ fn build_system_prompt(character_analysis: Option<&ChapterCharacterAnalysis>) ->
 
     if let Some(analysis) = character_analysis {
         if !analysis.characters.is_empty() {
-            let character_names: Vec<&str> = analysis.characters.iter().map(|c| c.name.as_str()).collect();
+            let character_names: Vec<&str> = analysis
+                .characters
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect();
 
             result.push_str("\n\n## 本章节角色信息\n");
             result.push_str(&format!("【主视角角色】{}\n\n", analysis.main_perspective));
@@ -171,7 +175,10 @@ fn build_system_prompt(character_analysis: Option<&ChapterCharacterAnalysis>) ->
             }
             result.push_str("\n## 角色约束（重要）\n");
             result.push_str("character 字段必须严格使用上述角色列表中的标准名称，");
-            result.push_str(&format!("只能从以下角色中选择：{}。", character_names.join("、")));
+            result.push_str(&format!(
+                "只能从以下角色中选择：{}。",
+                character_names.join("、")
+            ));
             result.push_str("不要使用角色列表以外的任何名称，不要添加称谓（如同学、先生、小姐），不要使用人称代词。");
         }
     }
@@ -221,11 +228,16 @@ fn build_character_analysis_prompt() -> String {
 - 角色名称要准确，使用原文中的称呼"#.to_string()
 }
 
-
 /// 对完整章节内容进行角色分析：调用 LLM 提取角色列表和主视角
-fn analyze_chapter_characters(api_key: &str, chapter_content: &str) -> Result<ChapterCharacterAnalysis, String> {
+fn analyze_chapter_characters(
+    api_key: &str,
+    chapter_content: &str,
+) -> Result<ChapterCharacterAnalysis, String> {
     println!("[analyze_chapter_characters] 开始分析章节角色...");
-    println!("[analyze_chapter_characters] 章节内容长度: {} 字符", chapter_content.chars().count());
+    println!(
+        "[analyze_chapter_characters] 章节内容长度: {} 字符",
+        chapter_content.chars().count()
+    );
 
     let system_prompt = build_character_analysis_prompt();
     let response = call_deepseek_api(api_key, &system_prompt, chapter_content)?;
@@ -233,22 +245,41 @@ fn analyze_chapter_characters(api_key: &str, chapter_content: &str) -> Result<Ch
     println!("[analyze_chapter_characters] LLM 响应: {}", response);
 
     let analysis: ChapterCharacterAnalysis = serde_json::from_str(&response).map_err(|e| {
-        eprintln!("[analyze_chapter_characters] JSON 解析失败: {}, raw={}", e, &response[..response.len().min(300)]);
+        eprintln!(
+            "[analyze_chapter_characters] JSON 解析失败: {}, raw={}",
+            e,
+            &response[..response.len().min(300)]
+        );
         format!("角色分析响应解析失败: {}", e)
     })?;
 
     println!("[analyze_chapter_characters] 角色分析完成");
-    println!("[analyze_chapter_characters]   主视角角色: {}", analysis.main_perspective);
-    println!("[analyze_chapter_characters]   共 {} 个角色:", analysis.characters.len());
+    println!(
+        "[analyze_chapter_characters]   主视角角色: {}",
+        analysis.main_perspective
+    );
+    println!(
+        "[analyze_chapter_characters]   共 {} 个角色:",
+        analysis.characters.len()
+    );
     for ch in &analysis.characters {
-        println!("[analyze_chapter_characters]     - {}: {}", ch.name, ch.traits);
+        println!(
+            "[analyze_chapter_characters]     - {}: {}",
+            ch.name, ch.traits
+        );
     }
 
     // 验证主视角是否在角色列表中
     if !analysis.characters.is_empty() {
-        let main_in_list = analysis.characters.iter().any(|c| c.name == analysis.main_perspective);
+        let main_in_list = analysis
+            .characters
+            .iter()
+            .any(|c| c.name == analysis.main_perspective);
         if !main_in_list {
-            eprintln!("[analyze_chapter_characters] 警告: 主视角 '{}' 不在角色列表中", analysis.main_perspective);
+            eprintln!(
+                "[analyze_chapter_characters] 警告: 主视角 '{}' 不在角色列表中",
+                analysis.main_perspective
+            );
         }
     }
 
@@ -314,10 +345,7 @@ fn split_content(content: &str, max_chunk_size: usize) -> Vec<String> {
         start = end;
     }
 
-    println!(
-        "[split_content] 分片完成: 共 {} 片",
-        chunks.len()
-    );
+    println!("[split_content] 分片完成: 共 {} 片", chunks.len());
     chunks
 }
 
@@ -328,26 +356,19 @@ pub fn process_selected_chapters(
     chapter_ids: Vec<i32>,
     character_analysis: Option<&ChapterCharacterAnalysis>,
 ) -> Result<ProcessedChaptersResult, String> {
-    println!(
-        "============================================================"
-    );
+    println!("============================================================");
     println!(
         "[process_selected_chapters] 开始处理章节, 请求章节 IDs: {:?}",
         chapter_ids
     );
-    println!(
-        "============================================================"
-    );
+    println!("============================================================");
 
     // 1. 从数据库获取章节内容
-    println!(
-        "[process_selected_chapters] 正在从数据库查询章节内容..."
-    );
-    let chapters = db_service::get_chapters_content_by_ids(app, &chapter_ids)
-        .map_err(|e| {
-            eprintln!("[process_selected_chapters] 数据库查询失败: {}", e);
-            format!("获取章节内容失败: {}", e)
-        })?;
+    println!("[process_selected_chapters] 正在从数据库查询章节内容...");
+    let chapters = db_service::get_chapters_content_by_ids(app, &chapter_ids).map_err(|e| {
+        eprintln!("[process_selected_chapters] 数据库查询失败: {}", e);
+        format!("获取章节内容失败: {}", e)
+    })?;
 
     println!(
         "[process_selected_chapters] 数据库查询成功, 获取到 {} 个章节",
@@ -421,9 +442,7 @@ pub fn process_selected_chapters(
         "[process_selected_chapters] 处理完成, 返回结果: total_chapters={}, total_chunks={}",
         result.total_chapters, result.total_chunks
     );
-    println!(
-        "============================================================"
-    );
+    println!("============================================================");
 
     Ok(result)
 }
@@ -547,13 +566,15 @@ pub fn call_deepseek_api(
     );
 
     // 解析响应
-    let deepseek_response: DeepSeekResponse = serde_json::from_str(&response_text).map_err(|e| {
-        eprintln!(
-            "[call_deepseek_api] 响应 JSON 解析失败: {}, raw={}",
-            e, &response_text[..response_text.len().min(200)]
-        );
-        format!("响应解析失败: {}", e)
-    })?;
+    let deepseek_response: DeepSeekResponse =
+        serde_json::from_str(&response_text).map_err(|e| {
+            eprintln!(
+                "[call_deepseek_api] 响应 JSON 解析失败: {}, raw={}",
+                e,
+                &response_text[..response_text.len().min(200)]
+            );
+            format!("响应解析失败: {}", e)
+        })?;
 
     if let Some(choice) = deepseek_response.choices.first() {
         let content = &choice.message.content;
@@ -636,9 +657,16 @@ pub fn call_llm_on_chunk(
 // ============================================================
 
 /// 后台运行 TTS 生成：角色分析 → 分片 → 调 API → 解析 → 存库
-fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -> Result<(), String> {
+fn run_tts_generation(
+    app: &AppHandle,
+    novel_id: i32,
+    chapter_indices: &[i32],
+) -> Result<(), String> {
     println!("============================================================");
-    println!("[run_tts_generation] 开始后台 TTS 生成, novel_id={}, 章节索引: {:?}", novel_id, chapter_indices);
+    println!(
+        "[run_tts_generation] 开始后台 TTS 生成, novel_id={}, 章节索引: {:?}",
+        novel_id, chapter_indices
+    );
     println!("============================================================");
 
     // 1. 获取 API key
@@ -647,10 +675,12 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
 
     // 2. 获取章节完整信息（通过 novel_id + chapter_index 定位）
     println!("[run_tts_generation] 查询章节信息...");
-    let chapters = db_service::get_chapters_by_novel_and_indices(app, novel_id as i64, chapter_indices).map_err(|e| {
-        eprintln!("[run_tts_generation] 查询章节失败: {}", e);
-        format!("查询章节失败: {}", e)
-    })?;
+    let chapters =
+        db_service::get_chapters_by_novel_and_indices(app, novel_id as i64, chapter_indices)
+            .map_err(|e| {
+                eprintln!("[run_tts_generation] 查询章节失败: {}", e);
+                format!("查询章节失败: {}", e)
+            })?;
 
     if chapters.is_empty() {
         return Err("未找到指定章节".to_string());
@@ -666,15 +696,26 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
         total_chunks += split_content(content, CHUNK_SIZE).len();
     }
 
-    println!("[run_tts_generation] 共 {} 个章节, {} 个分片", chapters.len(), total_chunks);
+    println!(
+        "[run_tts_generation] 共 {} 个章节, {} 个分片",
+        chapters.len(),
+        total_chunks
+    );
 
     // 5. 发送开始事件
-    let _ = app.emit("tts-progress", TtsGenerationProgress {
-        phase: "start".to_string(),
-        total_chunks,
-        processed_chunks: 0,
-        message: format!("开始处理 {} 个章节, 共 {} 个分片", chapters.len(), total_chunks),
-    });
+    let _ = app.emit(
+        "tts-progress",
+        TtsGenerationProgress {
+            phase: "start".to_string(),
+            total_chunks,
+            processed_chunks: 0,
+            message: format!(
+                "开始处理 {} 个章节, 共 {} 个分片",
+                chapters.len(),
+                total_chunks
+            ),
+        },
+    );
 
     // 6. 逐章节处理：角色分析 → 构建增强提示词 → 分片 → 调 LLM → 解析 → 存库
     let mut processed_chunks: usize = 0;
@@ -682,15 +723,21 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
 
     for (chapter_index, chapter_title, content, novel_id, chapter_id) in &chapters {
         println!("============================================================");
-        println!("[run_tts_generation] 开始处理章节 '{}' (index={})", chapter_title, chapter_index);
+        println!(
+            "[run_tts_generation] 开始处理章节 '{}' (index={})",
+            chapter_title, chapter_index
+        );
         println!("============================================================");
 
         // 6a. 角色分析：整章内容调用 LLM，提取角色列表和主视角
         println!("[run_tts_generation]   正在进行章节角色分析...");
         let character_analysis = match analyze_chapter_characters(api_key, content) {
             Ok(analysis) => {
-                println!("[run_tts_generation]   角色分析成功: 主视角='{}', {} 个角色",
-                    analysis.main_perspective, analysis.characters.len());
+                println!(
+                    "[run_tts_generation]   角色分析成功: 主视角='{}', {} 个角色",
+                    analysis.main_perspective,
+                    analysis.characters.len()
+                );
                 analysis
             }
             Err(e) => {
@@ -708,7 +755,10 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
             base_system_prompt.clone()
         } else {
             let enriched = build_system_prompt(Some(&character_analysis));
-            println!("[run_tts_generation]   增强系统提示词已构建 (长度={})", enriched.chars().count());
+            println!(
+                "[run_tts_generation]   增强系统提示词已构建 (长度={})",
+                enriched.chars().count()
+            );
             enriched
         };
 
@@ -716,7 +766,8 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
         let content_chunks = split_content(content, CHUNK_SIZE);
         println!(
             "[run_tts_generation]   章节 '{}' 被分为 {} 个分片",
-            chapter_title, content_chunks.len()
+            chapter_title,
+            content_chunks.len()
         );
 
         for (chunk_idx, chunk_content) in content_chunks.iter().enumerate() {
@@ -731,15 +782,21 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
             let response = match call_deepseek_api(api_key, &system_prompt, chunk_content) {
                 Ok(r) => r,
                 Err(e) => {
-                    eprintln!("[run_tts_generation] API 调用失败 (分片 {}): {}", processed_chunks, e);
+                    eprintln!(
+                        "[run_tts_generation] API 调用失败 (分片 {}): {}",
+                        processed_chunks, e
+                    );
                     failed_chunks += 1;
                     processed_chunks += 1;
-                    let _ = app.emit("tts-progress", TtsGenerationProgress {
-                        phase: "processing".to_string(),
-                        total_chunks,
-                        processed_chunks,
-                        message: format!("分片 {} 失败: {}", processed_chunks, e),
-                    });
+                    let _ = app.emit(
+                        "tts-progress",
+                        TtsGenerationProgress {
+                            phase: "processing".to_string(),
+                            total_chunks,
+                            processed_chunks,
+                            message: format!("分片 {} 失败: {}", processed_chunks, e),
+                        },
+                    );
                     continue;
                 }
             };
@@ -760,16 +817,19 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
             };
 
             // 插入分片记录（存原始输入/响应用于溯源，每分片一条）
-            let chunk_id = match db_service::insert_tts_chunk(app, &db_service::TtsChunkData {
-                id: None,
-                novel_id: *novel_id,
-                chapter_id: *chapter_id,
-                chunk_index: chunk_idx as i32,
-                system_prompt: Some(system_prompt.clone()),
-                user_content: Some(chunk_content.clone()),
-                raw_request: None,
-                raw_response: Some(response.clone()),
-            }) {
+            let chunk_id = match db_service::insert_tts_chunk(
+                app,
+                &db_service::TtsChunkData {
+                    id: None,
+                    novel_id: *novel_id,
+                    chapter_id: *chapter_id,
+                    chunk_index: chunk_idx as i32,
+                    system_prompt: Some(system_prompt.clone()),
+                    user_content: Some(chunk_content.clone()),
+                    raw_request: None,
+                    raw_response: Some(response.clone()),
+                },
+            ) {
                 Ok(id) => {
                     println!("[run_tts_generation]   分片记录已写入 (id={})", id);
                     Some(id)
@@ -794,7 +854,10 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
                     scene_type: scene.scene_type.clone(),
                     content: scene.content.clone(),
                     character_name: scene.character.clone(),
-                    emotion: scene.emotion.clone().unwrap_or_else(|| "neutral".to_string()),
+                    emotion: scene
+                        .emotion
+                        .clone()
+                        .unwrap_or_else(|| "neutral".to_string()),
                     speed: scene.speed.unwrap_or(1.0),
                     pitch: scene.pitch.unwrap_or(1.0),
                     pause_duration: scene.pause_duration.unwrap_or(0.5),
@@ -816,15 +879,21 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
             processed_chunks += 1;
 
             // 发送进度事件
-            let _ = app.emit("tts-progress", TtsGenerationProgress {
-                phase: "processing".to_string(),
-                total_chunks,
-                processed_chunks,
-                message: format!(
-                    "章节「{}」分片 {}/{} 完成 ({} 个场景)",
-                    chapter_title, processed_chunks, total_chunks, scenes.len()
-                ),
-            });
+            let _ = app.emit(
+                "tts-progress",
+                TtsGenerationProgress {
+                    phase: "processing".to_string(),
+                    total_chunks,
+                    processed_chunks,
+                    message: format!(
+                        "章节「{}」分片 {}/{} 完成 ({} 个场景)",
+                        chapter_title,
+                        processed_chunks,
+                        total_chunks,
+                        scenes.len()
+                    ),
+                },
+            );
         }
 
         // 6d. 标记该章节的 TTS 为已生成
@@ -838,7 +907,11 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
     }
 
     // 7. 发送完成事件
-    let status = if failed_chunks > 0 { "完成（部分失败）" } else { "全部完成" };
+    let status = if failed_chunks > 0 {
+        "完成（部分失败）"
+    } else {
+        "全部完成"
+    };
     println!(
         "[run_tts_generation] {}: 成功 {} / {} 分片, {} 失败",
         status,
@@ -847,17 +920,20 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
         failed_chunks
     );
 
-    let _ = app.emit("tts-progress", TtsGenerationProgress {
-        phase: "complete".to_string(),
-        total_chunks,
-        processed_chunks,
-        message: format!(
-            "{}，成功 {}/{} 分片",
-            status,
-            processed_chunks - failed_chunks,
-            total_chunks
-        ),
-    });
+    let _ = app.emit(
+        "tts-progress",
+        TtsGenerationProgress {
+            phase: "complete".to_string(),
+            total_chunks,
+            processed_chunks,
+            message: format!(
+                "{}，成功 {}/{} 分片",
+                status,
+                processed_chunks - failed_chunks,
+                total_chunks
+            ),
+        },
+    );
 
     println!("============================================================");
     Ok(())
@@ -865,7 +941,11 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
 
 /// Tauri 命令：启动后台 TTS 生成（不阻塞前端）
 #[tauri::command]
-pub fn start_tts_generation(app: AppHandle, novel_id: i32, chapter_ids: Vec<i32>) -> Result<(), String> {
+pub fn start_tts_generation(
+    app: AppHandle,
+    novel_id: i32,
+    chapter_ids: Vec<i32>,
+) -> Result<(), String> {
     println!(
         "[start_tts_generation] 收到请求, novel_id={}, 章节索引: {:?}",
         novel_id, chapter_ids
@@ -879,12 +959,15 @@ pub fn start_tts_generation(app: AppHandle, novel_id: i32, chapter_ids: Vec<i32>
     std::thread::spawn(move || {
         if let Err(e) = run_tts_generation(&app, novel_id, &chapter_ids) {
             eprintln!("[start_tts_generation] 后台处理失败: {}", e);
-            let _ = app.emit("tts-progress", TtsGenerationProgress {
-                phase: "error".to_string(),
-                total_chunks: 0,
-                processed_chunks: 0,
-                message: format!("处理失败: {}", e),
-            });
+            let _ = app.emit(
+                "tts-progress",
+                TtsGenerationProgress {
+                    phase: "error".to_string(),
+                    total_chunks: 0,
+                    processed_chunks: 0,
+                    message: format!("处理失败: {}", e),
+                },
+            );
         }
     });
 
@@ -893,13 +976,18 @@ pub fn start_tts_generation(app: AppHandle, novel_id: i32, chapter_ids: Vec<i32>
 
 /// Tauri 命令：获取所有已生成 TTS 剧本的章节
 #[tauri::command]
-pub fn get_tts_generated_chapters(app: AppHandle) -> Result<Vec<db_service::TtsGeneratedChapter>, String> {
+pub fn get_tts_generated_chapters(
+    app: AppHandle,
+) -> Result<Vec<db_service::TtsGeneratedChapter>, String> {
     db_service::get_tts_generated_chapters(&app).map_err(|e| e.to_string())
 }
 
 /// Tauri 命令：获取指定章节的 TTS 摘要（角色列表、场景数等）
 #[tauri::command]
-pub fn get_chapter_tts_summary(app: AppHandle, chapter_id: i64) -> Result<db_service::ChapterTtsSummary, String> {
+pub fn get_chapter_tts_summary(
+    app: AppHandle,
+    chapter_id: i64,
+) -> Result<db_service::ChapterTtsSummary, String> {
     db_service::get_chapter_tts_summary(&app, chapter_id).map_err(|e| e.to_string())
 }
 
@@ -915,14 +1003,22 @@ pub fn get_all_chapters(app: AppHandle) -> Result<Vec<db_service::ChapterWithNov
 
 /// Tauri 命令：获取指定章节的角色→语音映射
 #[tauri::command]
-pub fn get_chapter_character_mappings(app: AppHandle, chapter_id: i64) -> Result<Vec<db_service::ChapterCharacterVoiceMap>, String> {
-    db_service::get_character_voice_mappings_for_chapter(&app, chapter_id).map_err(|e| e.to_string())
+pub fn get_chapter_character_mappings(
+    app: AppHandle,
+    chapter_id: i64,
+) -> Result<Vec<db_service::ChapterCharacterVoiceMap>, String> {
+    db_service::get_character_voice_mappings_for_chapter(&app, chapter_id)
+        .map_err(|e| e.to_string())
 }
 
 /// Tauri 命令：保存章节的角色→语音映射
 /// mappings 格式：[[character_name, voice_id], ...]
 #[tauri::command]
-pub fn save_chapter_character_mappings(app: AppHandle, chapter_id: i64, mappings: Vec<Vec<String>>) -> Result<(), String> {
+pub fn save_chapter_character_mappings(
+    app: AppHandle,
+    chapter_id: i64,
+    mappings: Vec<Vec<String>>,
+) -> Result<(), String> {
     let parsed: Vec<(String, i64)> = mappings
         .iter()
         .map(|m| {
@@ -945,7 +1041,7 @@ pub fn save_chapter_character_mappings(app: AppHandle, chapter_id: i64, mappings
 /// 音频生成进度事件
 #[derive(serde::Serialize, Clone)]
 pub struct TtsAudioProgress {
-    pub phase: String,       // "start" | "processing" | "complete" | "error"
+    pub phase: String, // "start" | "processing" | "complete" | "error"
     pub total: usize,
     pub processed: usize,
     pub message: String,
@@ -953,7 +1049,10 @@ pub struct TtsAudioProgress {
 
 /// 后台运行音频生成
 fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), String> {
-    println!("[run_chapter_audio_generation] 开始音频生成，chapter_id={}", chapter_id);
+    println!(
+        "[run_chapter_audio_generation] 开始音频生成，chapter_id={}",
+        chapter_id
+    );
 
     // 1. 获取章节所有 TTS 场景
     let scenes = db_service::get_tts_scenes_with_id_by_chapter(app, chapter_id)
@@ -982,7 +1081,9 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
 
     // 从 scenes 获取 novel_id
     let novel_id = scenes[0].novel_id;
-    let output_dir = mp3_path.join(novel_id.to_string()).join(chapter_id.to_string());
+    let output_dir = mp3_path
+        .join(novel_id.to_string())
+        .join(chapter_id.to_string());
     std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建输出目录失败: {}", e))?;
 
     let total = scenes.len();
@@ -990,19 +1091,25 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
     let mut failed = 0;
 
     // 发送开始事件
-    let _ = app.emit("tts-audio-progress", TtsAudioProgress {
-        phase: "start".to_string(),
-        total,
-        processed: 0,
-        message: format!("开始音频生成，共 {} 条场景", total),
-    });
+    let _ = app.emit(
+        "tts-audio-progress",
+        TtsAudioProgress {
+            phase: "start".to_string(),
+            total,
+            processed: 0,
+            message: format!("开始音频生成，共 {} 条场景", total),
+        },
+    );
 
     // 4. 遍历场景生成音频
     for scene in &scenes {
         let character_name = match &scene.character_name {
             Some(name) if !name.is_empty() => name.clone(),
             _ => {
-                println!("[run_chapter_audio_generation] 场景 {} 无角色名，跳过", scene.id);
+                println!(
+                    "[run_chapter_audio_generation] 场景 {} 无角色名，跳过",
+                    scene.id
+                );
                 processed += 1;
                 continue;
             }
@@ -1012,7 +1119,10 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
         let voice_id = match voice_map.get(&character_name) {
             Some(id) => id,
             None => {
-                println!("[run_chapter_audio_generation] 角色 '{}' 未配置语音映射，跳过", character_name);
+                println!(
+                    "[run_chapter_audio_generation] 角色 '{}' 未配置语音映射，跳过",
+                    character_name
+                );
                 failed += 1;
                 processed += 1;
                 continue;
@@ -1023,7 +1133,10 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
         let voice_config = match db_service::get_character_voice_by_id(app, *voice_id) {
             Ok(v) => v,
             Err(e) => {
-                println!("[run_chapter_audio_generation] 获取语音配置失败 (voice_id={}): {}", voice_id, e);
+                println!(
+                    "[run_chapter_audio_generation] 获取语音配置失败 (voice_id={}): {}",
+                    voice_id, e
+                );
                 failed += 1;
                 processed += 1;
                 continue;
@@ -1037,7 +1150,12 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
             let mut result = None;
             for attempt in 1..=max_retries {
                 let adjusted_speed = (scene.speed - 0.2).max(0.5);
-                match call_gptsovits_tts(&voice_config, &scene.content, &scene.emotion, adjusted_speed) {
+                match call_gptsovits_tts(
+                    &voice_config,
+                    &scene.content,
+                    &scene.emotion,
+                    adjusted_speed,
+                ) {
                     Ok(bytes) => {
                         result = Some(bytes);
                         break;
@@ -1058,7 +1176,10 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
             match result {
                 Some(bytes) => bytes,
                 None => {
-                    eprintln!("[run_chapter_audio_generation] 音频生成最终失败 (scene_id={}): {}", scene.id, last_err);
+                    eprintln!(
+                        "[run_chapter_audio_generation] 音频生成最终失败 (scene_id={}): {}",
+                        scene.id, last_err
+                    );
                     failed += 1;
                     processed += 1;
                     continue;
@@ -1067,7 +1188,8 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
         };
 
         // 写入音频文件
-        let safe_name = character_name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_");
+        let safe_name =
+            character_name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_");
         let audio_filename = format!("{}_{}_{}.wav", scene.scene_index, safe_name, scene.id);
         let audio_path = output_dir.join(&audio_filename);
 
@@ -1080,19 +1202,24 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
 
         // 更新数据库中的 audio_path
         let audio_path_str = audio_path.to_string_lossy().to_string();
-        if let Err(e) = db_service::update_tts_script_audio_path(app, scene.id, Some(&audio_path_str)) {
+        if let Err(e) =
+            db_service::update_tts_script_audio_path(app, scene.id, Some(&audio_path_str))
+        {
             println!("[run_chapter_audio_generation] 更新音频路径失败: {}", e);
         }
 
         processed += 1;
 
         // 发送进度事件
-        let _ = app.emit("tts-audio-progress", TtsAudioProgress {
-            phase: "processing".to_string(),
-            total,
-            processed,
-            message: format!("场景 {}/{} 完成 — {}", processed, total, character_name),
-        });
+        let _ = app.emit(
+            "tts-audio-progress",
+            TtsAudioProgress {
+                phase: "processing".to_string(),
+                total,
+                processed,
+                message: format!("场景 {}/{} 完成 — {}", processed, total, character_name),
+            },
+        );
     }
 
     // 5. 更新章节 audio_path 指向目录
@@ -1100,15 +1227,27 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
     let _ = db_service::update_chapter_audio_path(app, chapter_id, Some(&dir_path_str));
 
     // 6. 发送完成事件
-    let status = if failed > 0 { "部分失败" } else { "全部完成" };
-    let _ = app.emit("tts-audio-progress", TtsAudioProgress {
-        phase: "complete".to_string(),
-        total,
-        processed,
-        message: format!("{}，成功 {}/{} 条", status, processed - failed, total),
-    });
+    let status = if failed > 0 {
+        "部分失败"
+    } else {
+        "全部完成"
+    };
+    let _ = app.emit(
+        "tts-audio-progress",
+        TtsAudioProgress {
+            phase: "complete".to_string(),
+            total,
+            processed,
+            message: format!("{}，成功 {}/{} 条", status, processed - failed, total),
+        },
+    );
 
-    println!("[run_chapter_audio_generation] 完成: {}/{} 成功, {} 失败", processed - failed, total, failed);
+    println!(
+        "[run_chapter_audio_generation] 完成: {}/{} 成功, {} 失败",
+        processed - failed,
+        total,
+        failed
+    );
     Ok(())
 }
 
@@ -1141,7 +1280,11 @@ fn call_gptsovits_tts(
 
     let full_url = format!("{}?{}", url, query_string);
 
-    println!("[call_gptsovits_tts] 请求: {} (文本长度={})", base, text.len());
+    println!(
+        "[call_gptsovits_tts] 请求: {} (文本长度={})",
+        base,
+        text.len()
+    );
 
     let response = ureq::get(&full_url)
         .call()
@@ -1155,7 +1298,9 @@ fn call_gptsovits_tts(
 
     let mut bytes: Vec<u8> = Vec::new();
     let mut reader = response.into_reader();
-    reader.read_to_end(&mut bytes).map_err(|e| format!("读取音频数据失败: {}", e))?;
+    reader
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("读取音频数据失败: {}", e))?;
 
     if bytes.is_empty() {
         return Err("TTS API 返回空音频数据".to_string());
@@ -1185,7 +1330,8 @@ fn urlencoding(input: &str) -> String {
 /// 保存音频文件到磁盘
 fn save_audio_file(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     let mut file = std::fs::File::create(path).map_err(|e| format!("创建文件失败: {}", e))?;
-    file.write_all(data).map_err(|e| format!("写入文件失败: {}", e))?;
+    file.write_all(data)
+        .map_err(|e| format!("写入文件失败: {}", e))?;
     println!("[save_audio_file] 已保存: {:?} ({} 字节)", path, data.len());
     Ok(())
 }
@@ -1193,17 +1339,23 @@ fn save_audio_file(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
 /// Tauri 命令：后台生成指定章节的音频
 #[tauri::command]
 pub fn generate_chapter_audio(app: AppHandle, chapter_id: i64) -> Result<(), String> {
-    println!("[generate_chapter_audio] 收到请求, chapter_id={}", chapter_id);
+    println!(
+        "[generate_chapter_audio] 收到请求, chapter_id={}",
+        chapter_id
+    );
 
     std::thread::spawn(move || {
         if let Err(e) = run_chapter_audio_generation(&app, chapter_id) {
             eprintln!("[generate_chapter_audio] 后台处理失败: {}", e);
-            let _ = app.emit("tts-audio-progress", TtsAudioProgress {
-                phase: "error".to_string(),
-                total: 0,
-                processed: 0,
-                message: format!("音频生成失败: {}", e),
-            });
+            let _ = app.emit(
+                "tts-audio-progress",
+                TtsAudioProgress {
+                    phase: "error".to_string(),
+                    total: 0,
+                    processed: 0,
+                    message: format!("音频生成失败: {}", e),
+                },
+            );
         }
     });
 
