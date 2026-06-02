@@ -5,8 +5,8 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager, State};
 
-use crate::db::dbService;
-use crate::state::appState::AppState;
+use crate::db::db_service;
+use crate::state::app_state::AppState;
 
 pub struct EngineProcesses(pub Mutex<HashMap<i64, Child>>);
 
@@ -45,7 +45,7 @@ pub fn start_engine(
     processes: State<EngineProcesses>,
     character_id: i64,
 ) -> Result<(), String> {
-    let voice = dbService::get_character_voice_by_id(&app, character_id)
+    let voice = db_service::get_character_voice_by_id(&app, character_id)
         .map_err(|e| format!("获取角色信息失败: {}", e))?;
 
     let config_path = voice

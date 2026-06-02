@@ -4,16 +4,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::state::appState::AppState;
-use crate::db::dbService;
-use crate::tools::process_novel::{self, ProcessNovelResult, ProcessedIllustration};
+use crate::state::app_state::AppState;
+use crate::db::db_service;
+use crate::tools::process_novel::{ProcessNovelResult, ProcessedIllustration};
 use tauri::{AppHandle, Manager, State};
 /// 保存插图到文件系统和数据库
 fn save_illustrations(
     app: &AppHandle,
     novel_id: i64,
     illustrations: &[crate::tools::process_novel::ProcessedIllustration],
-    config: &crate::config::appConfig::AppConfig,
+    config: &crate::config::app_config::AppConfig,
 ) -> Result<(), String> {
     use std::fs;
     use std::path::Path;
@@ -73,7 +73,7 @@ fn save_illustrations(
 
         println!("Saved illustration: {} ({} bytes)", image_path.to_string_lossy(), illustration.data.len());
 
-        let illustration_data = dbService::IllustrationData {
+        let illustration_data = db_service::IllustrationData {
             id: None,
             novel_id,
             image_path: image_path.to_string_lossy().to_string(),
@@ -85,7 +85,7 @@ fn save_illustrations(
     }
 
     if !illustration_data_list.is_empty() {
-        dbService::insert_illustrations_batch(app, &illustration_data_list)
+        db_service::insert_illustrations_batch(app, &illustration_data_list)
             .map_err(|e| format!("Failed to insert illustrations to database: {}", e))?;
         println!("Inserted {} illustrations to database", illustration_data_list.len());
     }
@@ -99,7 +99,7 @@ fn extract_and_save_cover_image(
     app: &AppHandle,
     novel_id: i64,
     illustrations: &[crate::tools::process_novel::ProcessedIllustration],
-    config: &crate::config::appConfig::AppConfig,
+    config: &crate::config::app_config::AppConfig,
 ) -> Result<Option<String>, String> {
     use std::fs;
     use std::path::Path;
@@ -179,88 +179,88 @@ fn extract_and_save_cover_image(
     Ok(Some(cover_image_path.to_string_lossy().to_string()))
 }
 
-/// 保存小说数据到数据库
-fn save_novel_to_database(
-    app: &AppHandle,
-    process_result: &ProcessNovelResult,
-    file_path: &PathBuf,
-    config: &crate::config::appConfig::AppConfig,
-) -> Result<(), String> {
-    // 准备小说数据
-    let novel_data = dbService::NovelData {
-        id: None, // 新插入的小说，id由数据库生成
-        title: process_result.novel.title.clone(),
-        author: process_result.novel.author.clone(),
-        file_path: file_path.clone(),
-        cover_image: None, // 保留为None，我们使用cover_image_path
-        cover_image_path: None, // 稍后更新
-    };
+// /// 保存小说数据到数据库
+// fn save_novel_to_database(
+//     app: &AppHandle,
+//     process_result: &ProcessNovelResult,
+//     file_path: &PathBuf,
+//     config: &crate::config::app_config::AppConfig,
+// ) -> Result<(), String> {
+//     // 准备小说数据
+//     let novel_data = db_service::NovelData {
+//         id: None, // 新插入的小说，id由数据库生成
+//         title: process_result.novel.title.clone(),
+//         author: process_result.novel.author.clone(),
+//         file_path: file_path.clone(),
+//         cover_image: None, // 保留为None，我们使用cover_image_path
+//         cover_image_path: None, // 稍后更新
+//     };
 
-    // 检查是否已存在相同文件路径的小说
-    if let Ok(Some(existing_id)) = dbService::find_novel_by_file_path(app, file_path) {
-        // 如果已存在，删除旧记录
-        dbService::delete_novel(app, existing_id)
-            .map_err(|e| format!("Failed to delete existing novel: {}", e))?;
-        println!("Deleted existing novel with id: {}", existing_id);
-    }
+//     // 检查是否已存在相同文件路径的小说
+//     if let Ok(Some(existing_id)) = db_service::find_novel_by_file_path(app, file_path) {
+//         // 如果已存在，删除旧记录
+//         db_service::delete_novel(app, existing_id)
+//             .map_err(|e| format!("Failed to delete existing novel: {}", e))?;
+//         println!("Deleted existing novel with id: {}", existing_id);
+//     }
 
-    // 插入小说
-    let novel_id = dbService::insert_novel(app, &novel_data)
-        .map_err(|e| format!("Failed to insert novel: {}", e))?;
+//     // 插入小说
+//     let novel_id = db_service::insert_novel(app, &novel_data)
+//         .map_err(|e| format!("Failed to insert novel: {}", e))?;
 
-    println!("Inserted novel with id: {}", novel_id);
+//     println!("Inserted novel with id: {}", novel_id);
 
-    // 提取并保存封面图片
-    if !process_result.illustrations.is_empty() {
-        match extract_and_save_cover_image(app, novel_id, &process_result.illustrations, config) {
-            Ok(Some(cover_image_path)) => {
-                dbService::update_novel_cover_image_path(app, novel_id, Some(&cover_image_path))
-                    .map_err(|e| format!("Failed to update novel cover image path: {}", e))?;
-                println!("Updated novel cover image path: {}", cover_image_path);
-            }
-            Ok(None) => {
-                println!("No cover image extracted");
-            }
-            Err(e) => {
-                println!("Warning: Failed to extract cover image: {}", e);
-            }
-        }
-    } else {
-        println!("No illustrations found for cover image");
-    }
+//     // 提取并保存封面图片
+//     if !process_result.illustrations.is_empty() {
+//         match extract_and_save_cover_image(app, novel_id, &process_result.illustrations, config) {
+//             Ok(Some(cover_image_path)) => {
+//                 db_service::update_novel_cover_image_path(app, novel_id, Some(&cover_image_path))
+//                     .map_err(|e| format!("Failed to update novel cover image path: {}", e))?;
+//                 println!("Updated novel cover image path: {}", cover_image_path);
+//             }
+//             Ok(None) => {
+//                 println!("No cover image extracted");
+//             }
+//             Err(e) => {
+//                 println!("Warning: Failed to extract cover image: {}", e);
+//             }
+//         }
+//     } else {
+//         println!("No illustrations found for cover image");
+//     }
 
-    // 准备章节数据
-    let mut chapter_data_list = Vec::new();
-    let mut chapter_index = 0;
+//     // 准备章节数据
+//     let mut chapter_data_list = Vec::new();
+//     let mut chapter_index = 0;
 
-    for chapter in &process_result.chapters {
-        let chapter_data = dbService::ChapterData {
-            novel_id,
-            chapter_index,
-            title: chapter.title.clone(),
-            content: Some(chapter.content.clone()),
-            audio_path: None,
-            tts_generated: false,
-        };
-        chapter_data_list.push(chapter_data);
-        chapter_index += 1;
-    }
+//     for chapter in &process_result.chapters {
+//         let chapter_data = db_service::ChapterData {
+//             novel_id,
+//             chapter_index,
+//             title: chapter.title.clone(),
+//             content: Some(chapter.content.clone()),
+//             audio_path: None,
+//             tts_generated: false,
+//         };
+//         chapter_data_list.push(chapter_data);
+//         chapter_index += 1;
+//     }
 
-    // 批量插入章节
-    if !chapter_data_list.is_empty() {
-        dbService::insert_chapters_batch(app, &chapter_data_list)
-            .map_err(|e| format!("Failed to insert chapters: {}", e))?;
-        println!("Inserted {} chapters", chapter_data_list.len());
-    }
+//     // 批量插入章节
+//     if !chapter_data_list.is_empty() {
+//         db_service::insert_chapters_batch(app, &chapter_data_list)
+//             .map_err(|e| format!("Failed to insert chapters: {}", e))?;
+//         println!("Inserted {} chapters", chapter_data_list.len());
+//     }
 
-    // 保存插图
-    if !process_result.illustrations.is_empty() {
-        save_illustrations(app, novel_id, &process_result.illustrations, config)
-            .map_err(|e| format!("Failed to save illustrations: {}", e))?;
-    }
+//     // 保存插图
+//     if !process_result.illustrations.is_empty() {
+//         save_illustrations(app, novel_id, &process_result.illustrations, config)
+//             .map_err(|e| format!("Failed to save illustrations: {}", e))?;
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 /// 用于前端显示的小说信息
 #[derive(serde::Serialize, tauri_ts_generator::TS)]
@@ -275,7 +275,7 @@ pub struct NovelInfo {
 
 #[tauri::command]
 pub fn get_all_books(app: AppHandle) -> Result<Vec<NovelInfo>, String> {
-    let novels = dbService::get_all_novels(&app)
+    let novels = db_service::get_all_novels(&app)
         .map_err(|e| format!("Failed to get novels: {}", e))?;
 
     let novel_infos: Vec<NovelInfo> = novels
@@ -309,7 +309,7 @@ pub struct ChapterInfo {
 
 #[tauri::command]
 pub fn get_book_details(app: AppHandle, novel_id: i64) -> Result<Option<NovelInfo>, String> {
-    let novel = dbService::get_novel_by_id(&app, novel_id)
+    let novel = db_service::get_novel_by_id(&app, novel_id)
         .map_err(|e| format!("Failed to get novel details: {}", e))?;
 
     match novel {
@@ -330,7 +330,7 @@ pub fn get_book_details(app: AppHandle, novel_id: i64) -> Result<Option<NovelInf
 
 #[tauri::command]
 pub fn get_book_chapters(app: AppHandle, novel_id: i64) -> Result<Vec<ChapterInfo>, String> {
-    let chapters = dbService::get_chapters_by_novel_id(&app, novel_id)
+    let chapters = db_service::get_chapters_by_novel_id(&app, novel_id)
         .map_err(|e| format!("Failed to get chapters: {}", e))?;
 
     let chapter_infos: Vec<ChapterInfo> = chapters
@@ -353,7 +353,7 @@ pub fn get_book_chapters(app: AppHandle, novel_id: i64) -> Result<Vec<ChapterInf
 
 #[tauri::command]
 pub fn get_chapter_content(app: AppHandle, novel_id: i64, chapter_index: i32) -> Result<Option<ChapterInfo>, String> {
-    let chapter = dbService::get_chapter_by_index(&app, novel_id, chapter_index)
+    let chapter = db_service::get_chapter_by_index(&app, novel_id, chapter_index)
         .map_err(|e| format!("获取章节内容失败: {}", e))?;
 
     Ok(chapter.map(|c| ChapterInfo {
@@ -371,7 +371,7 @@ pub fn delete_books(app: AppHandle, book_ids: Vec<i64>) -> Result<(), String> {
 
     for book_id in book_ids {
         // 先获取小说信息
-        let novel_data = dbService::get_novel_by_id(&app, book_id)
+        let novel_data = db_service::get_novel_by_id(&app, book_id)
             .map_err(|e| format!("Failed to get novel {}: {}", book_id, e))?;
 
         if let Some(novel) = novel_data {
@@ -398,7 +398,7 @@ pub fn delete_books(app: AppHandle, book_ids: Vec<i64>) -> Result<(), String> {
             }
 
             // 获取并删除插图文件
-            let illustrations = dbService::get_illustrations_by_novel_id(&app, book_id)
+            let illustrations = db_service::get_illustrations_by_novel_id(&app, book_id)
                 .map_err(|e| format!("Failed to get illustrations for novel {}: {}", book_id, e))?;
 
             for illustration in &illustrations {
@@ -434,7 +434,7 @@ pub fn delete_books(app: AppHandle, book_ids: Vec<i64>) -> Result<(), String> {
         }
 
         // 删除数据库记录（这会级联删除章节和插图记录）
-        dbService::delete_novel(&app, book_id)
+        db_service::delete_novel(&app, book_id)
             .map_err(|e| format!("Failed to delete book {} from database: {}", book_id, e))?;
     }
     Ok(())
@@ -479,14 +479,14 @@ pub fn import_book(
     println!("Copied file to: {}", dest_path.to_string_lossy());
 
     // 2. 检查是否已存在相同文件
-    if let Ok(Some(existing_id)) = dbService::find_novel_by_file_path(&app, &dest_path) {
-        dbService::delete_novel(&app, existing_id)
+    if let Ok(Some(existing_id)) = db_service::find_novel_by_file_path(&app, &dest_path) {
+        db_service::delete_novel(&app, existing_id)
             .map_err(|e| format!("Failed to delete existing novel: {}", e))?;
         println!("Deleted existing novel with id: {}", existing_id);
     }
 
     // 3. 插入小说
-    let novel_data = dbService::NovelData {
+    let novel_data = db_service::NovelData {
         id: None,
         title: title.clone(),
         author: author.clone(),
@@ -494,15 +494,15 @@ pub fn import_book(
         cover_image: None,
         cover_image_path: None,
     };
-    let novel_id = dbService::insert_novel(&app, &novel_data)
+    let novel_id = db_service::insert_novel(&app, &novel_data)
         .map_err(|e| format!("Failed to insert novel: {}", e))?;
     println!("Inserted novel with id: {}", novel_id);
 
     // 4. 插入章节
-    let chapter_data_list: Vec<dbService::ChapterData> = chapters
+    let chapter_data_list: Vec<db_service::ChapterData> = chapters
         .iter()
         .enumerate()
-        .map(|(i, ch)| dbService::ChapterData {
+        .map(|(i, ch)| db_service::ChapterData {
             novel_id,
             chapter_index: i as i32,
             title: ch.title.clone(),
@@ -513,7 +513,7 @@ pub fn import_book(
         .collect();
 
     if !chapter_data_list.is_empty() {
-        dbService::insert_chapters_batch(&app, &chapter_data_list)
+        db_service::insert_chapters_batch(&app, &chapter_data_list)
             .map_err(|e| format!("Failed to insert chapters: {}", e))?;
         println!("Inserted {} chapters", chapter_data_list.len());
     }
@@ -526,7 +526,7 @@ pub fn import_book(
         // 保存封面
         match extract_and_save_cover_image(&app, novel_id, &illustrations, &config) {
             Ok(Some(path)) => {
-                dbService::update_novel_cover_image_path(&app, novel_id, Some(&path))
+                db_service::update_novel_cover_image_path(&app, novel_id, Some(&path))
                     .map_err(|e| format!("Failed to update cover path: {}", e))?;
                 println!("Saved cover image: {}", path);
                 cover_image_path = Some(path);

@@ -1,1 +1,1 @@
-pub mod appConfig;
+pub mod app_config;

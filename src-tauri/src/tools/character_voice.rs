@@ -1,6 +1,6 @@
 use std::fs;
 use tauri::{AppHandle, Manager};
-use crate::db::dbService::{self, CharacterVoiceData};
+use crate::db::db_service::{self, CharacterVoiceData};
 
 fn generate_tts_config(app: &AppHandle, voice: &CharacterVoiceData) -> Result<String, String> {
     let config_dir = app
@@ -43,7 +43,7 @@ fn generate_tts_config(app: &AppHandle, voice: &CharacterVoiceData) -> Result<St
 pub fn get_all_character_voices(
     app: AppHandle,
 ) -> Result<Vec<CharacterVoiceData>, String> {
-    dbService::get_all_character_voices(&app).map_err(|e| e.to_string())
+    db_service::get_all_character_voices(&app).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -54,7 +54,7 @@ pub fn create_character_voice(
     let config_path = generate_tts_config(&app, &data)?;
     let mut data = data;
     data.config_path = Some(config_path);
-    dbService::insert_character_voice(&app, &data).map_err(|e| e.to_string())
+    db_service::insert_character_voice(&app, &data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -66,7 +66,7 @@ pub fn update_character_voice(
     let config_path = generate_tts_config(&app, &data)?;
     let mut data = data;
     data.config_path = Some(config_path);
-    dbService::update_character_voice(&app, id, &data).map_err(|e| e.to_string())
+    db_service::update_character_voice(&app, id, &data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -75,7 +75,7 @@ pub fn delete_character_voice(
     id: i64,
 ) -> Result<(), String> {
     // 先查角色名，用于删除对应的 yaml 配置文件
-    let voice = dbService::get_character_voice_by_id(&app, id).map_err(|e| e.to_string())?;
+    let voice = db_service::get_character_voice_by_id(&app, id).map_err(|e| e.to_string())?;
 
     let config_dir = app
         .path()
@@ -86,5 +86,5 @@ pub fn delete_character_voice(
     let yaml_path = config_dir.join(format!("{}.yaml", voice.character_name));
     let _ = fs::remove_file(&yaml_path);
 
-    dbService::delete_character_voice(&app, id).map_err(|e| e.to_string())
+    db_service::delete_character_voice(&app, id).map_err(|e| e.to_string())
 }

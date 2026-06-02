@@ -27,7 +27,7 @@ pub fn get_database_connection(app_handle: &tauri::AppHandle) -> Result<Connecti
 }
 
 pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<()> {
-    let mut conn = get_database_connection(app_handle)?;
+    let  conn = get_database_connection(app_handle)?;
 
     // 创建 novels 表
     conn.execute(

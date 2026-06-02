@@ -1,6 +1,6 @@
 use tauri::{AppHandle, State};
 
-use crate::config::appConfig::{self, AppConfig};
+use crate::config::app_config::{self, AppConfig};
 use std::sync::Mutex;
 
 #[derive(Debug)]
@@ -21,7 +21,7 @@ pub fn load_state() -> Result<AppState, String> {
 
 /// 从磁盘加载配置并更新 state（在 app setup 中调用）
 pub fn load_config_into_state(app: &AppHandle, state: &AppState) {
-    if let Ok(config) = appConfig::load_config(app) {
+    if let Ok(config) = app_config::load_config(app) {
         if let Ok(mut current) = state.config.lock() {
             *current = config;
         }
@@ -43,7 +43,7 @@ pub fn updata_config_state(
     *current_config = config.clone();
 
     // 持久化到 resource_dir()/setting.json
-    appConfig::save_config(&app, &config)?;
+    app_config::save_config(&app, &config)?;
 
     Ok("config ok".to_owned())
 }

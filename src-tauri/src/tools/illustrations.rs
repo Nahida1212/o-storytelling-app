@@ -1,5 +1,5 @@
 use tauri::AppHandle;
-use crate::db::dbService;
+use crate::db::db_service;
 
 /// 插图信息（用于前端显示）
 #[derive(serde::Serialize, tauri_ts_generator::TS)]
@@ -15,7 +15,7 @@ pub struct IllustrationInfo {
 /// 获取小说的所有插图
 #[tauri::command]
 pub fn get_illustrations_by_novel(app: AppHandle, novel_id: i64) -> Result<Vec<IllustrationInfo>, String> {
-    let illustrations = dbService::get_illustrations_by_novel_id(&app, novel_id)
+    let illustrations = db_service::get_illustrations_by_novel_id(&app, novel_id)
         .map_err(|e| format!("Failed to get illustrations: {}", e))?;
 
     let illustration_infos: Vec<IllustrationInfo> = illustrations
@@ -43,7 +43,7 @@ pub fn add_illustration(
     description: Option<String>,
     chapter_index: Option<i32>,
 ) -> Result<i64, String> {
-    let illustration_data = dbService::IllustrationData {
+    let illustration_data = db_service::IllustrationData {
         id: None,
         novel_id,
         image_path,
@@ -51,7 +51,7 @@ pub fn add_illustration(
         chapter_index,
     };
 
-    let illustration_id = dbService::insert_illustration(&app, &illustration_data)
+    let illustration_id = db_service::insert_illustration(&app, &illustration_data)
         .map_err(|e| format!("Failed to insert illustration: {}", e))?;
 
     Ok(illustration_id)
@@ -60,7 +60,7 @@ pub fn add_illustration(
 /// 删除插图
 #[tauri::command]
 pub fn delete_illustration(app: AppHandle, illustration_id: i64) -> Result<(), String> {
-    dbService::delete_illustration(&app, illustration_id)
+    db_service::delete_illustration(&app, illustration_id)
         .map_err(|e| format!("Failed to delete illustration: {}", e))?;
 
     Ok(())
@@ -73,7 +73,7 @@ pub fn update_illustration_description(
     illustration_id: i64,
     description: Option<String>,
 ) -> Result<(), String> {
-    dbService::update_illustration_description(&app, illustration_id, description.as_deref())
+    db_service::update_illustration_description(&app, illustration_id, description.as_deref())
         .map_err(|e| format!("Failed to update illustration description: {}", e))?;
 
     Ok(())

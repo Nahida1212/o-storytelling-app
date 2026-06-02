@@ -1,5 +1,4 @@
-use std::sync::Mutex;
-use crate::state::appState::AppState;
+use crate::state::app_state::AppState;
 use tauri::Manager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -14,7 +13,7 @@ pub mod db;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app_state = state::appState::load_state().unwrap_or_else(|_err| {
+    let app_state = state::app_state::load_state().unwrap_or_else(|_err| {
         println!("load fail");
         AppState::default()
     });
@@ -25,11 +24,11 @@ pub fn run() {
         .manage(tools::engine_manager::EngineProcesses::new())
         .setup(|app| {
             // 初始化数据库
-            db::dbStart::initialize_database(app.handle()).expect("数据库初始化失败");
+            db::db_start::initialize_database(app.handle()).expect("数据库初始化失败");
 
             // 从磁盘加载配置到 state
             let state = app.state::<AppState>();
-            state::appState::load_config_into_state(app.handle(), state.inner());
+            state::app_state::load_config_into_state(app.handle(), state.inner());
 
             Ok(())
         })
@@ -64,8 +63,8 @@ pub fn run() {
             tools::audio_player::get_novels_with_audio,
             tools::audio_player::get_chapters_with_audio,
             tools::audio_player::get_chapter_scenes_with_audio,
-            state::appState::get_config_state,
-            state::appState::updata_config_state
+            state::app_state::get_config_state,
+            state::app_state::updata_config_state
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

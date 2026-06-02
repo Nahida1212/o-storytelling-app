@@ -1,4 +1,4 @@
-use crate::db::dbService;
+use crate::db::db_service;
 use tauri::AppHandle;
 use tauri::Emitter;
 use tauri::Manager;
@@ -343,7 +343,7 @@ pub fn process_selected_chapters(
     println!(
         "[process_selected_chapters] 正在从数据库查询章节内容..."
     );
-    let chapters = dbService::get_chapters_content_by_ids(app, &chapter_ids)
+    let chapters = db_service::get_chapters_content_by_ids(app, &chapter_ids)
         .map_err(|e| {
             eprintln!("[process_selected_chapters] 数据库查询失败: {}", e);
             format!("获取章节内容失败: {}", e)
@@ -580,7 +580,7 @@ pub fn call_llm_with_active_key(
 ) -> Result<String, String> {
     println!("[call_llm_with_active_key] 从数据库获取活跃 API key...");
 
-    let api_key_data = dbService::get_active_api_key(app).map_err(|e| {
+    let api_key_data = db_service::get_active_api_key(app).map_err(|e| {
         eprintln!("[call_llm_with_active_key] 查询 API key 失败: {}", e);
         format!("查询 API key 失败: {}", e)
     })?;
@@ -647,7 +647,7 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
 
     // 2. 获取章节完整信息（通过 novel_id + chapter_index 定位）
     println!("[run_tts_generation] 查询章节信息...");
-    let chapters = dbService::get_chapters_by_novel_and_indices(app, novel_id as i64, chapter_indices).map_err(|e| {
+    let chapters = db_service::get_chapters_by_novel_and_indices(app, novel_id as i64, chapter_indices).map_err(|e| {
         eprintln!("[run_tts_generation] 查询章节失败: {}", e);
         format!("查询章节失败: {}", e)
     })?;
@@ -760,7 +760,7 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
             };
 
             // 插入分片记录（存原始输入/响应用于溯源，每分片一条）
-            let chunk_id = match dbService::insert_tts_chunk(app, &dbService::TtsChunkData {
+            let chunk_id = match db_service::insert_tts_chunk(app, &db_service::TtsChunkData {
                 id: None,
                 novel_id: *novel_id,
                 chapter_id: *chapter_id,
@@ -781,11 +781,11 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
             };
 
             // 构建场景记录（结构化，每场景一条）
-            let scenes: Vec<dbService::TtsSceneData> = llm_response
+            let scenes: Vec<db_service::TtsSceneData> = llm_response
                 .scenes
                 .iter()
                 .enumerate()
-                .map(|(i, scene)| dbService::TtsSceneData {
+                .map(|(i, scene)| db_service::TtsSceneData {
                     chunk_id,
                     novel_id: *novel_id,
                     chapter_id: *chapter_id,
@@ -808,7 +808,7 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
             );
 
             // 写入数据库
-            if let Err(e) = dbService::insert_tts_scenes_batch(app, &scenes) {
+            if let Err(e) = db_service::insert_tts_scenes_batch(app, &scenes) {
                 eprintln!("[run_tts_generation] 写入数据库失败: {}", e);
                 failed_chunks += 1;
             }
@@ -832,7 +832,7 @@ fn run_tts_generation(app: &AppHandle, novel_id: i32, chapter_indices: &[i32]) -
             "[run_tts_generation]   标记章节 '{}' (index={}) TTS 已生成",
             chapter_title, chapter_index
         );
-        if let Err(e) = dbService::update_chapter_tts_generated(app, *chapter_id, true) {
+        if let Err(e) = db_service::update_chapter_tts_generated(app, *chapter_id, true) {
             eprintln!("[run_tts_generation]   标记 TTS 生成状态失败: {}", e);
         }
     }
@@ -893,14 +893,14 @@ pub fn start_tts_generation(app: AppHandle, novel_id: i32, chapter_ids: Vec<i32>
 
 /// Tauri 命令：获取所有已生成 TTS 剧本的章节
 #[tauri::command]
-pub fn get_tts_generated_chapters(app: AppHandle) -> Result<Vec<dbService::TtsGeneratedChapter>, String> {
-    dbService::get_tts_generated_chapters(&app).map_err(|e| e.to_string())
+pub fn get_tts_generated_chapters(app: AppHandle) -> Result<Vec<db_service::TtsGeneratedChapter>, String> {
+    db_service::get_tts_generated_chapters(&app).map_err(|e| e.to_string())
 }
 
 /// Tauri 命令：获取指定章节的 TTS 摘要（角色列表、场景数等）
 #[tauri::command]
-pub fn get_chapter_tts_summary(app: AppHandle, chapter_id: i64) -> Result<dbService::ChapterTtsSummary, String> {
-    dbService::get_chapter_tts_summary(&app, chapter_id).map_err(|e| e.to_string())
+pub fn get_chapter_tts_summary(app: AppHandle, chapter_id: i64) -> Result<db_service::ChapterTtsSummary, String> {
+    db_service::get_chapter_tts_summary(&app, chapter_id).map_err(|e| e.to_string())
 }
 
 // ============================================================
@@ -909,14 +909,14 @@ pub fn get_chapter_tts_summary(app: AppHandle, chapter_id: i64) -> Result<dbServ
 
 /// Tauri 命令：获取所有章节（含小说信息），用于 TTS 生成页面
 #[tauri::command]
-pub fn get_all_chapters(app: AppHandle) -> Result<Vec<dbService::ChapterWithNovel>, String> {
-    dbService::get_all_chapters_grouped_by_novel(&app).map_err(|e| e.to_string())
+pub fn get_all_chapters(app: AppHandle) -> Result<Vec<db_service::ChapterWithNovel>, String> {
+    db_service::get_all_chapters_grouped_by_novel(&app).map_err(|e| e.to_string())
 }
 
 /// Tauri 命令：获取指定章节的角色→语音映射
 #[tauri::command]
-pub fn get_chapter_character_mappings(app: AppHandle, chapter_id: i64) -> Result<Vec<dbService::ChapterCharacterVoiceMap>, String> {
-    dbService::get_character_voice_mappings_for_chapter(&app, chapter_id).map_err(|e| e.to_string())
+pub fn get_chapter_character_mappings(app: AppHandle, chapter_id: i64) -> Result<Vec<db_service::ChapterCharacterVoiceMap>, String> {
+    db_service::get_character_voice_mappings_for_chapter(&app, chapter_id).map_err(|e| e.to_string())
 }
 
 /// Tauri 命令：保存章节的角色→语音映射
@@ -934,7 +934,7 @@ pub fn save_chapter_character_mappings(app: AppHandle, chapter_id: i64, mappings
         })
         .collect::<Result<Vec<_>, String>>()?;
 
-    dbService::save_character_voice_mappings_for_chapter(&app, chapter_id, &parsed)
+    db_service::save_character_voice_mappings_for_chapter(&app, chapter_id, &parsed)
         .map_err(|e| e.to_string())
 }
 
@@ -956,7 +956,7 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
     println!("[run_chapter_audio_generation] 开始音频生成，chapter_id={}", chapter_id);
 
     // 1. 获取章节所有 TTS 场景
-    let scenes = dbService::get_tts_scenes_with_id_by_chapter(app, chapter_id)
+    let scenes = db_service::get_tts_scenes_with_id_by_chapter(app, chapter_id)
         .map_err(|e| format!("获取 TTS 场景失败: {}", e))?;
 
     if scenes.is_empty() {
@@ -964,7 +964,7 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
     }
 
     // 2. 获取角色→语音映射
-    let mappings = dbService::get_character_voice_mappings_for_chapter(app, chapter_id)
+    let mappings = db_service::get_character_voice_mappings_for_chapter(app, chapter_id)
         .map_err(|e| format!("获取角色映射失败: {}", e))?;
 
     let voice_map: std::collections::HashMap<String, i64> = mappings
@@ -973,7 +973,7 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
         .collect();
 
     // 3. 获取配置中的 mp3 输出路径
-    let config = app.state::<crate::state::appState::AppState>();
+    let config = app.state::<crate::state::app_state::AppState>();
     let mp3_path = config.config.lock().unwrap().mp3_path.clone();
 
     if mp3_path.as_os_str().is_empty() {
@@ -1020,7 +1020,7 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
         };
 
         // 获取语音配置
-        let voice_config = match dbService::get_character_voice_by_id(app, *voice_id) {
+        let voice_config = match db_service::get_character_voice_by_id(app, *voice_id) {
             Ok(v) => v,
             Err(e) => {
                 println!("[run_chapter_audio_generation] 获取语音配置失败 (voice_id={}): {}", voice_id, e);
@@ -1080,7 +1080,7 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
 
         // 更新数据库中的 audio_path
         let audio_path_str = audio_path.to_string_lossy().to_string();
-        if let Err(e) = dbService::update_tts_script_audio_path(app, scene.id, Some(&audio_path_str)) {
+        if let Err(e) = db_service::update_tts_script_audio_path(app, scene.id, Some(&audio_path_str)) {
             println!("[run_chapter_audio_generation] 更新音频路径失败: {}", e);
         }
 
@@ -1097,7 +1097,7 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
 
     // 5. 更新章节 audio_path 指向目录
     let dir_path_str = output_dir.to_string_lossy().to_string();
-    let _ = dbService::update_chapter_audio_path(app, chapter_id, Some(&dir_path_str));
+    let _ = db_service::update_chapter_audio_path(app, chapter_id, Some(&dir_path_str));
 
     // 6. 发送完成事件
     let status = if failed > 0 { "部分失败" } else { "全部完成" };
@@ -1114,7 +1114,7 @@ fn run_chapter_audio_generation(app: &AppHandle, chapter_id: i64) -> Result<(), 
 
 /// 调用 GPT-SoVITS TTS API 生成音频
 fn call_gptsovits_tts(
-    voice: &dbService::CharacterVoiceData,
+    voice: &db_service::CharacterVoiceData,
     text: &str,
     emotion: &str,
     speed: f64,
