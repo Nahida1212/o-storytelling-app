@@ -10,6 +10,12 @@ use crate::state::app_state::AppState;
 
 pub struct EngineProcesses(pub Mutex<HashMap<i64, Child>>);
 
+impl Default for EngineProcesses {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EngineProcesses {
     pub fn new() -> Self {
         Self(Mutex::new(HashMap::new()))
@@ -34,7 +40,7 @@ fn parse_port(api_base_url: &str) -> &str {
         if after_colon
             .chars()
             .next()
-            .map_or(false, |c| c.is_ascii_digit())
+            .is_some_and(|c| c.is_ascii_digit())
         {
             let port = after_colon.split(['/', '?']).next().unwrap_or(after_colon);
             return port;
@@ -56,7 +62,7 @@ pub fn start_engine(
         .config_path
         .as_deref()
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| "角色没有配置文件路径，请先保存角色")?
+        .ok_or("角色没有配置文件路径，请先保存角色")?
         .to_string();
 
     let app_state = app.state::<AppState>();

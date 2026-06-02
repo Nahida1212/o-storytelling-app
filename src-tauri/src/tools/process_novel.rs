@@ -5,6 +5,7 @@ use tauri_ts_generator::TS;
 
 /// 章节类型枚举
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ChapterType {
     /// 封面
     Cover,
@@ -21,14 +22,10 @@ pub enum ChapterType {
     /// 结语
     BackMatter,
     /// 未知类型
+    #[default]
     Unknown,
 }
 
-impl Default for ChapterType {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct Novel {
@@ -56,6 +53,7 @@ impl Default for Novel {
 }
 
 #[derive(Clone, Serialize, Deserialize, TS, Debug)]
+#[derive(Default)]
 pub struct Chapter {
     id: String,
     book_id: String,
@@ -67,19 +65,6 @@ pub struct Chapter {
     chapter_type: Option<ChapterType>,
 }
 
-impl Default for Chapter {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            book_id: String::new(),
-            title: String::new(),
-            index: 0,
-            content: String::new(),
-            word_count: 0,
-            chapter_type: None,
-        }
-    }
-}
 
 /// 处理后的novel数据，用于保存到数据库
 #[derive(Debug)]
@@ -267,12 +252,10 @@ pub fn process_novel(path: &PathBuf) -> Result<ProcessNovelResult, String> {
             println!("提取的文本长度: {} 字符", word_count);
 
             // 只保存正文章节、前言和结语，跳过封面、目录等非内容章节
-            let should_save = match chapter_type {
-                ChapterType::ChapterBody | ChapterType::FrontMatter | ChapterType::BackMatter => {
-                    true
-                }
-                _ => false,
-            };
+            let should_save = matches!(
+                chapter_type,
+                ChapterType::ChapterBody | ChapterType::FrontMatter | ChapterType::BackMatter
+            );
 
             if should_save {
                 let processed_chapter = ProcessedChapter {
@@ -314,14 +297,11 @@ pub fn process_novel(path: &PathBuf) -> Result<ProcessNovelResult, String> {
 /// 从HTML中提取纯文本内容
 fn extract_text_from_html(html: &str) -> String {
     // 首先尝试使用html2text
-    match html2text::from_read(html.as_bytes(), usize::MAX) {
-        Ok(text) => {
-            let trimmed = text.trim();
-            if !trimmed.is_empty() && trimmed.chars().count() > 10 {
-                return trimmed.to_string();
-            }
+    if let Ok(text) = html2text::from_read(html.as_bytes(), usize::MAX) {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() && trimmed.chars().count() > 10 {
+            return trimmed.to_string();
         }
-        Err(_) => {}
     }
 
     // 备用方法：简单去除HTML标签
@@ -392,7 +372,7 @@ fn extract_body_class(html: &str) -> String {
 
                 // 找到属性值结束位置
                 let value_end = value_part
-                    .find(|c: char| c == '"' || c == '\'' || c == ' ' || c == '\t' || c == '\n');
+                    .find(['"', '\'', ' ', '\t', '\n']);
 
                 if let Some(end_pos) = value_end {
                     return value_part[..end_pos].to_string();
@@ -583,6 +563,7 @@ fn extract_epub_type(html: &str) -> String {
 /// 按优先级分类章节类型
 /// 第一优先：epub:type
 /// 第二优先：spine_id 解析（根据命名规则）
+#[allow(clippy::too_many_arguments)]
 fn classify_chapter_type(
     epub_type: &str,
     spine_id: &str,
@@ -713,8 +694,8 @@ fn classify_chapter_type(
 
     // 7. 检查正文章节 - 基于命名模式
     // 模式1: "p-" 后跟数字 (如 "p-037", "p-5")
-    if spine_id_lower.starts_with("p-") {
-        let after_prefix = &spine_id_lower[2..]; // 去掉 "p-"
+    if let Some(after_prefix) = spine_id_lower.strip_prefix("p-") {
+        // 去掉 "p-"
                                                  // 检查是否是纯数字
         if after_prefix.chars().all(|c| c.is_ascii_digit()) {
             println!(
@@ -755,7 +736,7 @@ fn classify_chapter_type(
 
     // 模式4: 包含数字的文件名 (如 "037.xhtml", "005.html")
     if spine_id_lower.ends_with(".xhtml") || spine_id_lower.ends_with(".html") {
-        let filename = spine_id_lower.split('/').last().unwrap_or(&spine_id_lower);
+        let filename = spine_id_lower.split('/').next_back().unwrap_or(&spine_id_lower);
         if filename
             .chars()
             .next()

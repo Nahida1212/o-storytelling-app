@@ -1,7 +1,10 @@
 use rusqlite::{params, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::db_start;
+
+/// 章节完整信息：(chapter_index, title, content, novel_id, chapter_id)
+type ChapterFullInfo = (i32, String, String, i64, i64);
 
 /// 小说数据（用于数据库插入和查询）
 #[derive(Debug)]
@@ -97,7 +100,7 @@ pub fn insert_chapters_batch(
 /// 根据文件路径查找小说ID
 pub fn find_novel_by_file_path(
     app_handle: &tauri::AppHandle,
-    file_path: &PathBuf,
+    file_path: &Path,
 ) -> Result<Option<i64>> {
     let conn = db_start::get_database_connection(app_handle)?;
 
@@ -1041,7 +1044,7 @@ pub fn get_chapter_tts_summary(
 pub fn get_chapters_full_info_by_ids(
     app_handle: &tauri::AppHandle,
     chapter_ids: &[i32],
-) -> Result<Vec<(i32, String, String, i64, i64)>> {
+) -> Result<Vec<ChapterFullInfo>> {
     let conn = db_start::get_database_connection(app_handle)?;
 
     if chapter_ids.is_empty() {
@@ -1472,7 +1475,7 @@ pub fn get_chapters_by_novel_and_indices(
     app_handle: &tauri::AppHandle,
     novel_id: i64,
     chapter_indices: &[i32],
-) -> Result<Vec<(i32, String, String, i64, i64)>> {
+) -> Result<Vec<ChapterFullInfo>> {
     let conn = db_start::get_database_connection(app_handle)?;
 
     if chapter_indices.is_empty() {

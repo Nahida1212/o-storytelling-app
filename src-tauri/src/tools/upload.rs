@@ -500,6 +500,7 @@ pub struct ImportChapterData {
 /// - 前端已处理：EPUB 解析、章节提取
 /// - 后端负责：文件复制、数据库写入
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn import_book(
     app: AppHandle,
     state: State<AppState>,
