@@ -6,7 +6,8 @@
       "Bash(npx vue-tsc *)",
       "Bash(npm install *)",
       "Bash(find /c/Users/86178/.cargo -name \"archive*\" -path \"*epubjs*\" 2>/dev/null; find \"e:/ideaProject/o-storytelling-app/node_modules/epubjs\" -name \"archive*\" -type f 2>/dev/null | head -10)",
-      "Read(//c/Users/86178/.cargo/**)"
+      "Read(//c/Users/86178/.cargo/**)",
+      "Bash(npm run *)"
     ]
   }
 }

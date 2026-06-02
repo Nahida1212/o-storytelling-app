@@ -37,12 +37,6 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: dist/
-          retention-days: 1
-
   # ----- Rust 后端检查 -----
   backend:
     runs-on: ubuntu-latest
@@ -54,7 +48,7 @@ jobs:
           toolchain: stable
           components: clippy
 
-      - name: Cache Cargo dependencies
+      - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
@@ -63,7 +57,7 @@ jobs:
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
 
-      - name: Install system dependencies (Tauri + sherpa-onnx)
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -80,19 +74,21 @@ jobs:
       - name: Clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml
 
-  # ----- Tauri 构建（仅 PR 和 main 分支） -----
+  # ----- Tauri 完整构建（仅 main 分支 push） -----
   tauri-build:
     needs: [frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
-        platform:
+        include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            bundle: deb
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-    runs-on: ${{ matrix.platform.os }}
+            bundle: msi
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -106,7 +102,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.platform.target }}
+          target: ${{ matrix.target }}
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -115,10 +111,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-tauri-${{ hashFiles('src-tauri/Cargo.lock') }}
 
       - name: Install Linux system deps
-        if: matrix.platform.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -130,6 +126,10 @@ jobs:
             libasound2-dev
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v2
+        run: npx tauri build --bundles ${{ matrix.bundle }} --project src-tauri
+
+      - uses: actions/upload-artifact@v4
         with:
-          projectPath: src-tauri
+          name: tauri-${{ matrix.os }}
+          path: src-tauri/target/release/bundle/
+          retention-days: 7

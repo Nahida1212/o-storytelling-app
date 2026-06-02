@@ -14,14 +14,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform:
+        include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            format: AppImage
+            bundle: deb
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            format: msi
-    runs-on: ${{ matrix.platform.os }}
+            bundle: msi
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +35,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.platform.target }}
+          target: ${{ matrix.target }}
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -49,7 +49,7 @@ jobs:
             ${{ runner.os }}-cargo-release-
 
       - name: Install Linux system deps
-        if: matrix.platform.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -60,14 +60,16 @@ jobs:
             patchelf \
             libasound2-dev
 
-      - name: Build and upload release
-        uses: tauri-apps/tauri-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Tauri app
+        run: npx tauri build --bundles ${{ matrix.bundle }} --project src-tauri
+
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
         with:
-          projectPath: src-tauri
-          tagName: ${{ github.ref_name }}
-          releaseName: "v__VERSION__"
-          releaseBody: "请查看 [CHANGELOG](CHANGELOG.md) 了解更新内容。"
-          releaseDraft: true
+          tag_name: ${{ github.ref_name }}
+          name: v${{ github.ref_name }}
+          body: "请查看 CHANGELOG.md 了解更新内容。"
+          draft: true
           prerelease: false
+          files: |
+            src-tauri/target/release/bundle/**/*
