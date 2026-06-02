@@ -61,7 +61,8 @@ jobs:
             libasound2-dev
 
       - name: Build Tauri app
-        run: npx tauri build --bundles ${{ matrix.bundle }} --project src-tauri
+        working-directory: src-tauri
+        run: npx tauri build --bundles ${{ matrix.bundle }}
 
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
